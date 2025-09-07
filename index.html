@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Raiden and the Wing Chun Temple</title>
+  <style>
+    :root { --bg:#000; --panel:#0b1622; --btn:#fff; --btnText:#111; }
+    * { box-sizing: border-box; touch-action: manipulation; }
+    html, body { height:100%; margin:0; background:var(--bg); color:#fff; font-family:system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
+    #wrap { height:100%; display:flex; align-items:center; justify-content:center; }
+    #menu { text-align:center; }
+    #menu img { max-width:90vw; max-height:60vh; height:auto; display:block; margin:0 auto 16px; }
+    .btn { display:block; margin:10px auto; padding:12px 22px; font-size:18px; border:2px solid #fff8; background:transparent; color:#fff; border-radius:10px; }
+    .btn:active { transform: scale(0.98); }
+    #stage { display:none; width:100%; height:100%; display:flex; align-items:center; justify-content:center; }
+    #game { background:linear-gradient(#0b1622,#0f1e2f); border-radius:14px; box-shadow:0 20px 60px #000a; }
+    #hud { position:fixed; top:10px; left:10px; padding:8px 10px; background:#161b22cc; border:1px solid #2a2f3a; border-radius:10px; font-size:14px; display:none; }
+    #hud b{color:#9cd2ff}
+  </style>
+</head>
+<body>
+  <div id="wrap">
+    <div id="menu">
+      <img src="menu-title.png" alt="Title Art" />
+      <button id="playBtn" class="btn">Play</button>
+      <button id="musicBtn" class="btn">Music: On</button>
+      <button id="creditsBtn" class="btn">Credits</button>
+    </div>
+    <div id="stage">
+      <canvas id="game" width="360" height="640"></canvas>
+    </div>
+  </div>
+  <div id="hud">FPS:<b id="fps">—</b> · Sprite:<b id="sok">loading</b></div>
+
+  <script>
+  // ---------- MENU / AUDIO ----------
+  const menu = document.getElementById('menu');
+  const stage = document.getElementById('stage');
+  const playBtn = document.getElementById('playBtn');
+  const musicBtn = document.getElementById('musicBtn');
+  const hud = document.getElementById('hud'), fpsEl=document.getElementById('fps'), sokEl=document.getElementById('sok');
+
+  let musicOn=true;
+  const menuMusic = new Audio('menu.mp3'); menuMusic.loop=true;
+  const levelMusic = new Audio('crane.mp3'); levelMusic.loop=true;
+
+  // Attempt to start menu music (mobile may block until tap)
+  menuMusic.play().catch(()=>{});
+
+  musicBtn.onclick = ()=>{
+    musicOn = !musicOn;
+    musicBtn.textContent = 'Music: ' + (musicOn?'On':'Off');
+    if(musicOn) { if(window.inGame) { levelMusic.play().catch(()=>{}); } else { menuMusic.play().catch(()=>{});} }
+    else { menuMusic.pause(); levelMusic.pause(); }
+  };
+
+  let inGame=false;
+  playBtn.onclick = ()=>{
+    inGame=true;
+    menu.style.display='none';
+    stage.style.display='flex';
+    hud.style.display='block';
+    if(musicOn){ menuMusic.pause(); levelMusic.currentTime=0; levelMusic.play().catch(()=>{}); }
+    startGameLoop();
+  };
+
+  // ---------- CANVAS FIT (portrait) ----------
+  const cvs = document.getElementById('game');
+  const ctx = cvs.getContext('2d');
+  function fitCanvas(){
+    const maxW = Math.min(420, window.innerWidth*0.96);
+    const maxH = Math.min(740, window.innerHeight*0.96);
+    const targetH = Math.max(600, Math.min(640, maxH));
+    const targetW = Math.max(320, Math.min(360, maxW));
+    cvs.width = 360; cvs.height = 640; // logical resolution
+    cvs.style.width = targetW+'px';
+    cvs.style.height = targetH+'px';
+  }
+  addEventListener('resize', fitCanvas); fitCanvas();
+
+  // ---------- SPRITE (3x3) ----------
+  const sprite = new Image();
+  sprite.src = 'raiden-sprites.png?v=1'; // add ?v= if you update file to bypass cache
+  let SPR_W=256, SPR_H=384, COLS=3, ROWS=3, spriteReady=false;
+  sprite.onload = ()=>{ SPR_W = Math.floor(sprite.naturalWidth / COLS); SPR_H = Math.floor(sprite.naturalHeight / ROWS); spriteReady=true; sokEl.textContent='ok'; };
+  sprite.onerror = ()=>{ spriteReady=false; sokEl.textContent='missing'; };
+
+  // ---------- PLAYER ----------
+  const GROUND_Y = 560;
+  const DRAW_W = 120, DRAW_H = 180; // on-screen size
+  const player = { x:(cvs.width-DRAW_W)/2, y:GROUND_Y-DRAW_H, vx:0, vy:0, onGround:true, facing:1, state:'idle', ai:0, anim:0, tick:0 };
+
+  const anims = {
+    idle:{frames:[0,1,2],speed:10},
+    walk:{frames:[3,4,5],speed:8},
+    punch:{frames:[6,7],speed:6,hold:8},
+    jump:{frames:[8],speed:12}
+  };
+
+  const keys={left:false,right:false,up:false,attack:false};
+  document.addEventListener('keydown',e=>{
+    if(e.key==='ArrowLeft'||e.key==='a') keys.left=true;
+    if(e.key==='ArrowRight'||e.key==='d') keys.right=true;
+    if(e.key===' '||e.key==='w'||e.key==='ArrowUp') keys.up=true;
+    if(e.key==='j') keys.attack=true;
+  });
+  document.addEventListener('keyup',e=>{
+    if(e.key==='ArrowLeft'||e.key==='a') keys.left=false;
+    if(e.key==='ArrowRight'||e.key==='d') keys.right=false;
+    if(e.key===' '||e.key==='w'||e.key==='ArrowUp') keys.up=false;
+    if(e.key==='j') keys.attack=false;
+  });
+
+  // ---------- LOOP ----------
+  let last=performance.now(), frames=0, fps=0;
+  function update(dt){
+    // horizontal
+    const speed=120; // px/s
+    player.vx = (keys.left?-speed:0) + (keys.right?speed:0);
+    player.x += player.vx * dt;
+    if(keys.left) player.facing=-1;
+    if(keys.right) player.facing=1;
+
+    // jump
+    if(keys.up && player.onGround){ player.vy = -520; player.onGround=false; }
+    // gravity
+    player.vy += 1400*dt;
+    player.y += player.vy*dt;
+    if(player.y + DRAW_H >= GROUND_Y){ player.y = GROUND_Y - DRAW_H; player.vy = 0; player.onGround = true; }
+
+    // state
+    if(!player.onGround) player.state='jump';
+    else if(keys.attack) player.state='punch';
+    else if(Math.abs(player.vx)>2) player.state='walk';
+    else player.state='idle';
+
+    // animate
+    const a = anims[player.state]; player.tick++;
+    if(player.state==='punch'){
+      if(player.tick % a.speed === 0){ player.anim++; if(player.anim>=a.frames.length){ player.anim=a.frames.length-1; if(player.tick>a.speed*(a.hold??6)){ keys.attack=false; player.state='idle'; player.anim=0; player.tick=0; } } }
+    }else{
+      if(player.tick % a.speed === 0){ player.anim=(player.anim+1)%a.frames.length; }
+    }
+  }
+
+  function draw(){
+    ctx.clearRect(0,0,cvs.width,cvs.height);
+    // ground + backdrop
+    ctx.fillStyle='#2a2f3a'; ctx.fillRect(0,GROUND_Y+20,cvs.width,cvs.height-(GROUND_Y+20));
+    ctx.fillStyle='#6e4b2e'; ctx.fillRect(40,GROUND_Y-10,cvs.width-80,12);
+
+    // player
+    const a = anims[player.state]; const id=a.frames[player.anim|0];
+    const sx=(id%COLS)*SPR_W, sy=Math.floor(id/COLS)*SPR_H;
+
+    ctx.save();
+    if(player.facing===-1){ ctx.translate(player.x+DRAW_W/2,0); ctx.scale(-1,1); ctx.translate(-(player.x+DRAW_W/2),0); }
+    ctx.imageSmoothingEnabled=false;
+    if(spriteReady){
+      ctx.drawImage(sprite, sx,sy,SPR_W,SPR_H, player.x,player.y,DRAW_W,DRAW_H);
+    }else{
+      // fallback placeholder rectangle
+      ctx.fillStyle='#ffd34d';
+      ctx.fillRect(player.x,player.y,DRAW_W,DRAW_H);
+      ctx.fillStyle='#111'; ctx.fillRect(player.x+20,player.y+30,12,12);
+    }
+    ctx.restore();
+  }
+
+  function loop(ts){
+    const dt = Math.min(0.033, (ts-last)/1000); last=ts;
+    update(dt); draw();
+    // fps meter
+    frames++; if(frames%10===0){ fps = Math.round(10/dt); fpsEl.textContent=fps; }
+    requestAnimationFrame(loop);
+  }
+
+  function startGameLoop(){ last=performance.now(); requestAnimationFrame(loop); }
+
+  // Expose for debugging
+  window.startGameLoop = startGameLoop;
+  </script>
+</body>
+</html>
