@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no" />
+<title>Raiden and the Wing Chun Temple – Portrait v5</title>
+<style>
+  html,body{margin:0;height:100%;background:#0c0f14;color:#fff;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial}
+  #stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#0c0f14}
+  #canvas{display:block;image-rendering:pixelated}
+  .hud{position:absolute;left:12px;top:10px;background:rgba(0,0,0,.35);padding:10px 12px;border-radius:12px;font-size:14px}
+  .bar{height:8px;background:#222;border-radius:6px;overflow:hidden;margin:6px 0}
+  .bar>i{display:block;height:100%;background:linear-gradient(90deg,#aaf,#7cf);width:0%}
+  .token{display:inline-block;background:#111827;border:1px solid #334155;border-radius:999px;padding:4px 10px;margin-right:8px}
+  #controls{position:fixed;left:0;right:0;bottom:0;padding:10px;background:#111827ee;display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between}
+  .cluster{display:flex;gap:10px}
+  .btn{pointer-events:auto;touch-action:manipulation;background:#1b2533;border:1px solid #2f3d55;border-radius:12px;
+       color:#fff;font-weight:700;min-width:64px;min-height:56px;display:flex;align-items:center;justify-content:center;user-select:none}
+  #menu{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(#09121e,#0f2035)}
+  .panel{background:#0c1624cc;border:1px solid #2f3d55;border-radius:16px;padding:18px 20px;width:min(520px,90vw)}
+  .panel h1{margin:0 0 8px;font-size:22px}
+  .panel .row{display:flex;gap:10px;flex-wrap:wrap}
+  .panel button{pointer-events:auto;padding:10px 14px;border-radius:10px;border:1px solid #2f3d55;background:#1b2533;color:#fff;font-weight:700}
+  .titleImg{display:block;max-width:100%;height:auto;margin:0 auto 10px auto;border-radius:12px}
+  @media (pointer:fine){#controls{display:none}}
+</style>
+</head>
+<body>
+<div id="menu">
+  <div class="panel">
+    <img id="titleImg" class="titleImg" alt="Title art" style="display:none">
+    <h1>Raiden and the Wing Chun Temple</h1>
+    <p>Press Play to begin your training.</p>
+    <div class="row">
+      <button id="playBtn">▶ Play</button>
+      <button id="musicBtn">Music: On</button>
+      <button id="creditsBtn">Credits</button>
+    </div>
+  </div>
+</div>
+
+<div id="stage"><canvas id="canvas"></canvas></div>
+<div class="hud" id="hud">
+  <span class="token">Stage: <b id="stageName">Crane: Balance</b></span>
+  <span class="token">Lessons: <b id="lessons">0/3</b></span>
+  <div>Balance<div class="bar"><i id="balanceBar"></i></div></div>
+  <div>Focus<div class="bar"><i id="focusBar"></i></div></div>
+  <div>Power<div class="bar"><i id="powerBar"></i></div></div>
+</div>
+
+<div id="controls">
+  <div class="cluster">
+    <div class="btn" data-k="ArrowLeft">◀</div>
+    <div class="btn" data-k="ArrowRight">▶</div>
+    <div class="btn" data-k="Space">⬤ Focus</div>
+  </div>
+  <div class="cluster">
+    <div class="btn" data-k="KeyJ">J</div>
+    <div class="btn" data-k="KeyK">K</div>
+    <div class="btn" data-k="ArrowUp">↑</div>
+  </div>
+</div>
+
+<audio id="menuMusic" src="menu.mp3" loop></audio>
+<audio id="gameMusic1" src="crane.mp3" loop></audio>
+<audio id="gameMusic2" src="snake.mp3" loop></audio>
+<audio id="gameMusic3" src="tiger.mp3" loop></audio>
+<audio id="gameMusic4" src="temple.mp3" loop></audio>
+<audio id="victoryMusic" src="victory.mp3"></audio>
+<audio id="creditsMusic" src="credits.mp3" loop></audio>
+
+<script>
+(() => {
+  // ----- viewport & scaling (portrait 540x960) -----
+  const DESIGN_W=540, DESIGN_H=960;
+  const cvs = document.getElementById('canvas');
+  const ctx = cvs.getContext('2d');
+  function resize(){
+    const vw=window.innerWidth, vh=window.innerHeight;
+    const scale=Math.min(vw/DESIGN_W, vh/DESIGN_H);
+    const cssW=(DESIGN_W*scale)|0, cssH=(DESIGN_H*scale)|0;
+    const dpr=Math.min(devicePixelRatio||1,3);
+    cvs.style.width=cssW+'px'; cvs.style.height=cssH+'px';
+    cvs.width=(cssW*dpr)|0; cvs.height=(cssH*dpr)|0;
+    ctx.setTransform((cvs.width/DESIGN_W),0,0,(cvs.height/DESIGN_H),0,0);
+  }
+  addEventListener('resize', resize); addEventListener('orientationchange', resize); resize();
+
+  // ----- UI elements -----
+  const hud = {
+    stageName:document.getElementById('stageName'),
+    lessons:document.getElementById('lessons'),
+    bal:document.getElementById('balanceBar'),
+    foc:document.getElementById('focusBar'),
+    pow:document.getElementById('powerBar')
+  };
+
+  // ----- menu & music -----
+  const menu = document.getElementById('menu');
+  const titleImg = document.getElementById('titleImg');
+  fetch('menu-title.png',{method:'HEAD'}).then(r=>{if(r.ok){titleImg.src='menu-title.png'; titleImg.style.display='block';}});
+  let musicOn=true, currentMusic=null;
+  const menuMusic=document.getElementById('menuMusic');
+  const tracks=[null,document.getElementById('gameMusic1'),document.getElementById('gameMusic2'),
+                document.getElementById('gameMusic3'),document.getElementById('gameMusic4')];
+  function playMusic(aud){ if(!musicOn||!aud) return; try{aud.currentTime=0; aud.play(); currentMusic=aud;}catch(e){} }
+  function stopMusic(){ [menuMusic,...tracks].forEach(a=>{try{a.pause();}catch(e){}}); currentMusic=null; }
+
+  const playBtn=document.getElementById('playBtn');
+  const musicBtn=document.getElementById('musicBtn');
+  const creditsBtn=document.getElementById('creditsBtn');
+  const startAudioOnce=()=>{ playMusic(menuMusic); window.removeEventListener('pointerdown', startAudioOnce); };
+  window.addEventListener('pointerdown', startAudioOnce);
+
+  playBtn.onclick=()=>{ menu.style.display='none'; stopMusic(); playMusic(tracks[1]); clearInputs(); };
+  musicBtn.onclick=()=>{ musicOn=!musicOn; musicBtn.textContent='Music: ' + (musicOn?'On':'Off'); if(!musicOn) stopMusic(); else { if(menu.style.display!=='none') playMusic(menuMusic); else playMusic(currentStageMusic()); } };
+  creditsBtn.onclick=()=>{ stopMusic(); playMusic(document.getElementById('creditsMusic')); alert('Credits: Story & Music by Creator. Code by Game Builder AI.'); stopMusic(); playMusic(currentStageMusic()); };
+
+  // ----- input -----
+  const keys=new Set();
+  function onKey(e){ const k=e.code; if(e.type==='keydown') keys.add(k); else keys.delete(k); }
+  addEventListener('keydown', onKey); addEventListener('keyup', onKey);
+  function clearInputs(){ keys.clear(); }
+  document.querySelectorAll('.btn').forEach(b=>{
+    const k=b.dataset.k;
+    const down=()=>{keys.add(k); b.style.transform='scale(0.96)';};
+    const up=()=>{keys.delete(k); b.style.transform='scale(1)';};
+    b.addEventListener('pointerdown', down);
+    addEventListener('pointerup', up); addEventListener('pointercancel', up); addEventListener('pointerleave', up);
+  });
+
+  // ----- game state -----
+  const state={stage:1, lessons:0, balance:50, focus:0, power:0};
+  function currentStageMusic(){return tracks[state.stage]||null;}
+  hud.stageName.textContent='Crane: Balance';
+
+  // ----- sprite loading (supports 3x4 sheet) -----
+  const sprite=new Image();
+  sprite.src='raiden-sprites.png';
+  let sheetReady=false, frameW=48, frameH=48, drawScale=1.0;
+  sprite.onload=()=>{
+    // detect grid: prefer 3x4, fallback to 4x4
+    const gw=[3,4].find(n=>sprite.width%n===0) || 3;
+    const gh=[4,4].find(n=>sprite.height%n===0) || 4;
+    frameW=sprite.width/gw; frameH=sprite.height/gh;
+    // scale to nice on-screen size (about 56px tall in design units)
+    drawScale = Math.min(1.4, 56/frameH);
+    sheetReady=true;
+  };
+
+  // ----- player -----
+  const groundY=860; // design coords
+  const player={ x:150, y:groundY-10, w:28, h:40, vx:0, vy:0, onGround:false, facing:1, anim:'idle', t:0 };
+  const anims={ idle:[0,1,2,3], punch:[4,5,6,7], walk:[8,9,10,11], jump:[6] };
+  function setAnim(name){ if(player.anim!==name){ player.anim=name; player.t=0; } }
+
+  function step(dt){
+    // input -> velocity (no auto-walk)
+    const speed=110;
+    let moving=false;
+    if(keys.has('ArrowLeft')){ player.vx=-speed; player.facing=-1; moving=true; }
+    else if(keys.has('ArrowRight')){ player.vx=speed; player.facing=1; moving=true; }
+    else { player.vx=0; }
+
+    if((keys.has('ArrowUp')) && player.onGround){ player.vy=-300; player.onGround=false; }
+
+    // simple gravity
+    player.vy+=900*dt;
+    player.x+=player.vx*dt; player.y+=player.vy*dt;
+
+    // ground collision
+    if(player.y>=groundY){ player.y=groundY; player.vy=0; player.onGround=true; }
+
+    // choose animation
+    if(!player.onGround) setAnim('jump');
+    else if(keys.has('KeyJ')) setAnim('punch');
+    else if(moving) setAnim('walk');
+    else setAnim('idle');
+
+    player.t+=dt;
+  }
+
+  function drawBackground(){
+    const g=ctx.createLinearGradient(0,0,0,DESIGN_H);
+    g.addColorStop(0,'#0b1626'); g.addColorStop(1,'#0f2238');
+    ctx.fillStyle=g; ctx.fillRect(0,0,DESIGN_W,DESIGN_H);
+    // simple ground
+    ctx.fillStyle='#1e293b'; ctx.fillRect(0,groundY+10,DESIGN_W,DESIGN_H-(groundY+10));
+    ctx.fillStyle='#6b4f2a'; ctx.fillRect(80,groundY,DESIGN_W-160,10);
+  }
+
+  function drawPlayer(){
+    const scale = drawScale;
+    const dw = frameW*scale, dh = frameH*scale;
+    // anchor bottom-center
+    const dx = player.x - dw/2;
+    const dy = player.y - dh;
+    if(sheetReady){
+      const seq=anims[player.anim]||anims.idle;
+      const fps = player.anim==='walk'?9: player.anim==='punch'?12: 6;
+      const idx = seq[Math.floor(player.t*fps)%seq.length];
+      const cols = (sprite.width%4===0 && sprite.height%4===0)?4:3; // rough detect
+      const gridW = (sprite.width%3===0)?3:4;
+      const col = idx % gridW;
+      const row = (idx / gridW)|0;
+      ctx.save();
+      ctx.translate(dx+dw/2, dy);
+      ctx.scale(player.facing,1);
+      ctx.drawImage(sprite, col*frameW, row*frameH, frameW, frameH, -dw/2, 0, dw, dh);
+      ctx.restore();
+    }else{
+      // fallback rectangle
+      ctx.fillStyle='#f8b400'; ctx.fillRect(dx, dy, dw, dh);
+    }
+  }
+
+  function render(){
+    drawBackground();
+    drawPlayer();
+    requestAnimationFrame(render);
+  }
+
+  // HUD update loop (just bars anim)
+  setInterval(()=>{
+    hud.bal.style.width='50%';
+    hud.foc.style.width=(state.focus|0)+'%';
+    hud.pow.style.width=(state.power|0)+'%';
+    hud.lessons.textContent=`${state.lessons}/3`;
+  }, 120);
+
+  // begin
+  requestAnimationFrame(render);
+})();
+</script>
+</body>
+</html>
