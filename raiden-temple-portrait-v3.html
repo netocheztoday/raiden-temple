@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
+<title>Raiden and the Wing Chun Temple – Portrait</title>
+<style>
+  :root { --bg:#0c0f14; --ui:#0f172a; --ui2:#1e293b; --txt:#e5e7eb; }
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial}
+  #stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:var(--bg);}
+  /* Canvas will be centered and scaled to fit without stretching */
+  canvas{display:block;image-rendering:pixelated;background:#0c0f14}
+  /* HUD */
+  #hud{position:fixed;left:12px;top:12px;background:rgba(0,0,0,.35);padding:8px 10px;border-radius:10px;font-size:14px;backdrop-filter: blur(2px);}
+  .token{display:inline-block;background:#111827;border:1px solid #334155;border-radius:8px;padding:2px 8px;margin-right:6px}
+  .bar{height:8px;background:#111827;border-radius:6px;overflow:hidden;margin:6px 0;border:1px solid #334155}
+  .bar>i{display:block;height:100%;background:linear-gradient(90deg,#a5b4fc,#7dd3fc);width:0%}
+  /* Menu */
+  #menu{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55)}
+  .panel{background:#0b1220;border:1px solid #334155;border-radius:16px;padding:18px 20px;max-width:460px;pointer-events:auto}
+  .panel h1{margin:0 0 8px;font-size:22px}
+  .panel .row{display:flex;gap:10px;flex-wrap:wrap}
+  .panel button{background:#16233a;border:1px solid #2f3d55;border-radius:10px;color:#fff;padding:10px 14px;font-weight:700}
+  /* Controls */
+  #controls{position:fixed;left:0;right:0;bottom:0;padding:8px 10px;background:#111827aa;display:flex;gap:10px;flex-wrap:wrap;justify-content:space-between}
+  .cluster{display:flex;gap:10px;flex:1;min-width:140px;justify-content:flex-start}
+  .btn{pointer-events:auto;touch-action:manipulation;background:#1b2533;border:1px solid #2f3d55;border-radius:12px;
+       color:#fff;font-weight:700;min-width:54px;min-height:54px;display:flex;align-items:center;justify-content:center;user-select:none}
+  @media (pointer:fine){#controls{display:none}}
+</style>
+</head>
+<body>
+<!-- Audio hooks -->
+<audio id="mMenu" src="menu.mp3" loop></audio>
+<audio id="mCrane" src="crane.mp3" loop></audio>
+<audio id="mSnake" src="snake.mp3" loop></audio>
+<audio id="mTiger" src="tiger.mp3" loop></audio>
+<audio id="mTemple" src="temple.mp3" loop></audio>
+<audio id="mVictory" src="victory.mp3"></audio>
+<audio id="mGameOver" src="gameover.mp3"></audio>
+<audio id="mCredits" src="credits.mp3" loop></audio>
+
+<div id="menu">
+  <div class="panel">
+    <h1>Raiden and the Wing Chun Temple</h1>
+    <p>Press Play to begin your training.</p>
+    <div class="row">
+      <button id="playBtn">▶ Play</button>
+      <button id="musicBtn">Music: On</button>
+      <button id="creditsBtn">Credits</button>
+    </div>
+    <p style="font-size:12px;opacity:.8;margin-top:10px">Portrait mode • Controls: ◀ ▶ · ⏺ Focus · J punch · K interact · ↑ jump</p>
+  </div>
+</div>
+
+<div id="stage"><canvas id="cvs" width="540" height="960"></canvas></div>
+<div id="hud">
+  <span class="token">Stage: <b id="stageName">Crane: Balance</b></span>
+  <span class="token">Lessons: <b id="lessons">0/3</b></span>
+  <div>Balance<div class="bar"><i id="barBal"></i></div></div>
+  <div>Focus<div class="bar"><i id="barFoc"></i></div></div>
+  <div>Power<div class="bar"><i id="barPow"></i></div></div>
+</div>
+
+<div id="controls">
+  <div class="cluster">
+    <div class="btn" data-k="ArrowLeft">◀</div>
+    <div class="btn" data-k="ArrowRight">▶</div>
+    <div class="btn" data-k="Space">⏺ Focus</div>
+  </div>
+  <div class="cluster" style="justify-content:flex-end">
+    <div class="btn" data-k="KeyJ">J</div>
+    <div class="btn" data-k="KeyK">K</div>
+    <div class="btn" data-k="ArrowUp">↑</div>
+  </div>
+</div>
+
+<script>
+(()=>{
+  // ----- Portrait scaling (DESIGN 540x960) -----
+  const DESIGN_W=540, DESIGN_H=960;
+  const cvs=document.getElementById('cvs');
+  const ctx=cvs.getContext('2d');
+  function fitPortrait(){
+    const vw=window.innerWidth, vh=window.innerHeight;
+    const scale=Math.min(vw/DESIGN_W, vh/DESIGN_H);
+    const cssW=Math.floor(DESIGN_W*scale), cssH=Math.floor(DESIGN_H*scale);
+    const dpr=Math.min(window.devicePixelRatio||1,3);
+    const rW=Math.floor(cssW*dpr), rH=Math.floor(cssH*dpr);
+    if(cvs.width!==rW||cvs.height!==rH){cvs.width=rW;cvs.height=rH;}
+    cvs.style.width=cssW+'px'; cvs.style.height=cssH+'px';
+    ctx.setTransform(rW/DESIGN_W,0,0,rH/DESIGN_H,0,0);
+  }
+  fitPortrait(); addEventListener('resize', fitPortrait); addEventListener('orientationchange', fitPortrait);
+
+  // ----- Input (keys + mobile) -----
+  const keys=new Set();
+  const mapKey=e=>{const k=e.code; if(e.type==='keydown') keys.add(k); else keys.delete(k);};
+  addEventListener('keydown', mapKey); addEventListener('keyup', mapKey);
+  document.querySelectorAll('.btn').forEach(b=>{
+    const k=b.dataset.k, down=()=>{keys.add(k); b.style.transform='scale(0.96)';}, up=()=>{keys.delete(k); b.style.transform='scale(1)';};
+    b.addEventListener('pointerdown', down); addEventListener('pointerup', up); addEventListener('pointercancel', up); addEventListener('pointerleave', up);
+  });
+
+  // ----- Music control -----
+  const A = {
+    menu: document.getElementById('mMenu'),
+    crane: document.getElementById('mCrane'),
+    snake: document.getElementById('mSnake'),
+    tiger: document.getElementById('mTiger'),
+    temple: document.getElementById('mTemple'),
+    victory: document.getElementById('mVictory'),
+    gameover: document.getElementById('mGameOver'),
+    credits: document.getElementById('mCredits'),
+  };
+  let musicOn=true;
+  const musicBtn=document.getElementById('musicBtn');
+  function stopAll(){ Object.values(A).forEach(a=>{ a.pause(); try{a.currentTime=0;}catch{} }); }
+  function playTrack(a){ if(!musicOn) return; a.volume=.8; a.play().catch(()=>{}); }
+  // auto start menu after first tap/press (mobile policy)
+  const startMenuOnce=()=>{ playTrack(A.menu); };
+  addEventListener('pointerdown', startMenuOnce, {once:true});
+  addEventListener('keydown', startMenuOnce, {once:true});
+  musicBtn.onclick=()=>{ musicOn=!musicOn; musicBtn.textContent='Music: '+(musicOn?'On':'Off'); if(!musicOn) stopAll(); else playTrack(A.menu); };
+
+  // Menu buttons
+  const menu=document.getElementById('menu');
+  document.getElementById('playBtn').onclick=()=>{ menu.style.display='none'; stopAll(); playTrack(A.crane); };
+  document.getElementById('creditsBtn').onclick=()=>{ stopAll(); playTrack(A.credits); alert('Credits: Story & Music by Creator. Code by Game Builder AI'); };
+
+  // ----- HUD refs -----
+  const hud={
+    stageName: document.getElementById('stageName'),
+    lessons: document.getElementById('lessons'),
+    bal: document.getElementById('barBal'),
+    foc: document.getElementById('barFoc'),
+    pow: document.getElementById('barPow'),
+  };
+
+  // ----- Sprite loader (supports 3x4 or 4x4 sheets) -----
+  const spriteImg=new Image();
+  spriteImg.src='raiden-sprites.png';
+  let cols=4, rows=4; // defaults
+  let spriteReady=false;
+  spriteImg.onload=()=>{
+    // try to auto-detect 3x4
+    const w=spriteImg.naturalWidth, h=spriteImg.naturalHeight;
+    // Prefer exact divisibility
+    if(h%3===0 && w%4===0 && (h/3)!==(w/4)) { rows=3; cols=4; }
+    else if(h%4===0 && w%4===0){ rows=4; cols=4; }
+    else if(h%3===0 && w%4===0){ rows=3; cols=4; }
+    spriteReady=true;
+  };
+
+  function drawSprite(frame, x,y, w=32,h=48, flip=false){
+    if(!spriteReady){ ctx.fillStyle='#f4b400'; ctx.fillRect(x,y,w,h); return; }
+    const fw = spriteImg.naturalWidth/cols;
+    const fh = spriteImg.naturalHeight/rows;
+    const sx = (frame%cols)*fw;
+    const sy = Math.floor(frame/cols)*fh;
+    ctx.save();
+    if(flip){ ctx.translate(x+w, y); ctx.scale(-1,1); x=0; y=0; }
+    ctx.imageSmoothingEnabled=false;
+    ctx.drawImage(spriteImg, sx,sy,fw,fh, x,y,w,h);
+    ctx.restore();
+  }
+
+  // ----- Simple game state (portrait layout) -----
+  const W=DESIGN_W, H=DESIGN_H;
+  const groundY=H-160; // more headroom in portrait
+  const player={x:100,y:groundY-64,w:36,h:56,vx:0,vy:0,onGround:false, facing:1, anim:'idle', t:0, frame:0};
+  const npcs=[
+    {stage:0, name:'Crane', x:420, y:groundY-60, color:'#a3e635', line:'"Balance brings structure."'},
+    {stage:1, name:'Snake', x:430, y:groundY-60, color:'#22d3ee', line:'"Focus. Flow. Be still and sharp."'},
+    {stage:2, name:'Tiger', x:430, y:groundY-68, color:'#f59e0b', line:'"Power lives inside you."'},
+    {stage:3, name:'Master',x:360, y:groundY-66, color:'#f472b6', line:'"Wing Chun is here — in your heart."'},
+  ];
+  const obstacles={
+    0:[{x:120,w:320,type:'log'}],
+    1:[{x:120,w:120,type:'spike'},{x:320,w:140,type:'spike'},{x:440,w:60,type:'spike'}],
+    2:[{x:180,w:40,type:'boulder'},{x:300,w:40,type:'boulder'},{x:420,w:120,type:'gate'}],
+    3:[]
+  };
+  const state={stage:0, lessons:0, balance:50, focus:0, power:0};
+
+  function stageName(i){ return ['Crane: Balance','Snake: Focus','Tiger: Power','Temple: Master'][i]; }
+  function nextStage(){ state.stage=Math.min(3,state.stage+1); hud.stageName.textContent=stageName(state.stage);
+    Object.values(A).forEach(a=>{try{a.pause();a.currentTime=0;}catch{}});
+    if(musicOn){ [A.crane,A.snake,A.tiger,A.temple][state.stage]?.play().catch(()=>{}); }
+    player.x=100; player.y=groundY-64; player.vx=player.vy=0; }
+
+  // ----- Update & render -----
+  function drawBackground(stage){
+    const g=ctx.createLinearGradient(0,0,0,H);
+    if(stage===0){ g.addColorStop(0,'#0b1a30'); g.addColorStop(1,'#0e2746'); }
+    if(stage===1){ g.addColorStop(0,'#0a1c17'); g.addColorStop(1,'#14332b'); }
+    if(stage===2){ g.addColorStop(0,'#1a1111'); g.addColorStop(1,'#2b1a1a'); }
+    if(stage===3){ g.addColorStop(0,'#0f1b2b'); g.addColorStop(1,'#18324f'); }
+    ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+    // ground
+    ctx.fillStyle='#1f2937'; ctx.fillRect(0,groundY,W,H-groundY);
+    ctx.fillStyle='#374151'; ctx.fillRect(0,groundY,W,4);
+  }
+  function drawNPC(n){
+    ctx.save(); ctx.translate(n.x,n.y);
+    ctx.fillStyle=n.color; ctx.fillRect(-10,-20,20,20);
+    ctx.fillStyle='#222'; ctx.fillRect(-12,0,24,4);
+    ctx.restore();
+  }
+  function aabb(a,b){ return !(a.x+a.w<b.x||a.x>b.x+b.w||a.y+a.h<b.y-b.h||a.y>b.y); }
+
+  // animation frames mapping for 3x4 sheet (12 frames)
+  const anims_3x4={ idle:[0,1,2,3], punch:[4,5,6,7], walk:[8,9,10,11], jump:[6] };
+  const anims_4x4={ idle:[0,1,2,3], punch:[4,5,6,7], walk:[8,9,10,11], jump:[12,13,14,15] };
+  function currentAnims(){ return (rows===3 && cols===4) ? anims_3x4 : anims_4x4; }
+
+  let last=performance.now();
+  function loop(now){
+    const dt = Math.min(0.033,(now-last)/1000); last=now;
+
+    // Stage mechanics
+    if(state.stage===0){
+      const log=obstacles[0][0];
+      const onLog = player.x+player.w>log.x && player.x<log.x+log.w && player.onGround;
+      if(onLog){
+        state.balance += Math.sin(now*0.004)*0.4;
+        if(keys.has('ArrowLeft')||keys.has('KeyA')) state.balance -= 0.6;
+        if(keys.has('ArrowRight')||keys.has('KeyD')) state.balance += 0.6;
+        state.balance = Math.max(0,Math.min(100,state.balance));
+        if (state.balance<5 || state.balance>95){ player.y=groundY-64; player.x=log.x-30; state.balance=50; }
+      }
+    }
+    if(state.stage===1){ state.focus = Math.max(0, Math.min(100, state.focus + (keys.has('Space')?45*dt:-25*dt))); }
+    if(state.stage===2){
+      if(keys.has('KeyK')) state.power = Math.min(100, state.power + 60*dt);
+      else state.power = Math.max(0, state.power - 40*dt);
+    }
+
+    // Movement
+    const speed=140;
+    player.vx=0;
+    if(keys.has('ArrowLeft')||keys.has('KeyA')) {player.vx=-speed; player.facing=-1; player.anim='walk';}
+    if(keys.has('ArrowRight')||keys.has('KeyD')) {player.vx=+speed; player.facing=+1; player.anim='walk';}
+    if(!(keys.has('ArrowLeft')||keys.has('KeyA')||keys.has('ArrowRight')||keys.has('KeyD'))) { if(player.onGround) player.anim='idle'; }
+    if((keys.has('ArrowUp')||keys.has('KeyW')) && player.onGround){ player.vy=-320; player.onGround=false; player.anim='jump'; }
+    if(keys.has('KeyJ')) { player.anim='punch'; }
+
+    // Physics
+    player.vy += 900*dt;
+    player.x += player.vx*dt;
+    player.y += player.vy*dt;
+    if(player.y+player.h>=groundY){ player.y=groundY-player.h; player.vy=0; player.onGround=true; if(player.vx===0 && !keys.has('KeyJ')) player.anim='idle'; }
+
+    // Obstacles interactions
+    const obs=obstacles[state.stage];
+    for(const o of obs){
+      if(state.stage===1 && o.type==='spike'){
+        const flashing=Math.floor(now/600)%2===0;
+        if(flashing && aabb({x:player.x,y:player.y,w:player.w,h:player.h},{x:o.x,y:groundY,w:o.w,h:28})){
+          if(state.focus<70){ player.x=100; }
+        }
+      }
+      if(state.stage===2){
+        if(o.type==='boulder' && Math.abs(player.x - (o.x))<36 && state.power>65){ o.x+=120; }
+        if(o.type==='gate' && Math.abs(player.x - (o.x+o.w/2))<40 && state.power>80){ o.w=Math.max(0,o.w-160); }
+      }
+    }
+
+    // Reach NPC to advance
+    const npc = npcs.find(n=>n.stage===state.stage);
+    if(npc && Math.abs(player.x - npc.x)<36){
+      const ok = (state.stage===0 && state.balance>=45 && state.balance<=55) ||
+                 (state.stage===1 && state.focus>=80) ||
+                 (state.stage===2 && state.power>=80) ||
+                 (state.stage===3);
+      if(ok){
+        if(state.stage<3){ state.lessons++; nextStage(); }
+      }
+    }
+
+    // Draw
+    drawBackground(state.stage);
+    // Draw obstacles
+    const cur=obstacles[state.stage];
+    for(const o of cur){
+      ctx.save(); ctx.translate(o.x,groundY);
+      if(o.type==='log'){ ctx.fillStyle='#6b4f2d'; ctx.fillRect(0,-10,o.w,10); }
+      if(o.type==='spike'){ ctx.fillStyle='#94a3b8'; for(let x=0;x<o.w;x+=12){ ctx.beginPath(); ctx.moveTo(x,-10); ctx.lineTo(x+6,-28); ctx.lineTo(x+12,-10); ctx.closePath(); ctx.fill(); } }
+      if(o.type==='boulder'){ ctx.fillStyle='#64748b'; ctx.beginPath(); ctx.arc(0,-20,20,0,Math.PI*2); ctx.fill(); }
+      if(o.type==='gate'){ ctx.fillStyle='#7f1d1d'; ctx.fillRect(0,-60,o.w,60); }
+      ctx.restore();
+    }
+    // NPC simple
+    drawNPC(npc);
+    // Player
+    const anims=currentAnims();
+    player.t += dt;
+    const seq = anims[player.anim] || anims.idle;
+    const idx = Math.floor(player.t * (player.anim==='walk'?8:6)) % seq.length;
+    drawSprite(seq[idx], player.x, player.y, player.w, player.h, player.facing<0);
+
+    // HUD
+    hud.stageName.textContent = stageName(state.stage);
+    hud.lessons.textContent = `${state.lessons}/3`;
+    hud.bal.style.width = `${state.balance|0}%`;
+    hud.foc.style.width = `${state.focus|0}%`;
+    hud.pow.style.width = `${state.power|0}%`;
+
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
