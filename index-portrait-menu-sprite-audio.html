@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Raiden and the Wing Chun Temple</title>
+<style>
+  :root{--bg:#0b1320;--panel:#0f1b2b;--panel2:#101a28;--ink:#e6f0ff;--mut:#9fb4d1;}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial}
+  /* Stage wrapper centers the canvas, keeps portrait aspect without stretching */
+  #stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:var(--bg)}
+  canvas{display:block;image-rendering:pixelated}
+  /* HUD */
+  .hud{position:absolute;left:12px;top:10px;background:rgba(0,0,0,.35);padding:10px 12px;border-radius:12px;backdrop-filter:blur(2px)}
+  .chip{display:inline-block;margin-right:8px;padding:4px 8px;background:#0b1626;border:1px solid #24344d;border-radius:999px}
+  .label{margin-top:6px}
+  .bar{height:10px;background:#1d2a40;border-radius:999px;overflow:hidden;margin:6px 0;width:240px}
+  .bar i{display:block;height:100%;background:linear-gradient(90deg,#a8c7ff,#7fc8ff);width:0%}
+  /* Mobile controls */
+  #controls{position:absolute;left:0;right:0;bottom:0;padding:10px;background:rgba(10,16,26,.9);display:flex;gap:8px;flex-wrap:wrap;justify-content:space-between}
+  .cluster{display:flex;gap:8px;flex-wrap:wrap}
+  .btn{pointer-events:auto;touch-action:manipulation;min-width:64px;min-height:56px;border-radius:12px;border:1px solid #2a3a55;background:#172234;color:#fff;
+       display:flex;align-items:center;justify-content:center;font-weight:700}
+  .btn:active{transform:scale(.96)}
+  @media (pointer:fine){#controls{display:none}}
+  /* Menu */
+  #menu{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(#0b1320,#101c31)}
+  .panel{pointer-events:auto;background:var(--panel);border:1px solid #2a3a55;border-radius:16px;padding:18px 20px;max-width:560px;box-shadow:0 10px 40px rgba(0,0,0,.35)}
+  .panel h1{margin:0 0 8px;font-size:24px}
+  .panel p{margin:0 0 14px;color:var(--mut)}
+  .row{display:flex;gap:10px;flex-wrap:wrap}
+  .panel button{pointer-events:auto;padding:10px 14px;border-radius:10px;border:1px solid #2f3d55;background:#1b2533;color:#fff;font-weight:700}
+  #titleArt{display:block;max-width:min(92vw,520px);max-height:48vh;margin:0 auto 12px auto;image-rendering:pixelated}
+</style>
+</head>
+<body>
+<!-- MENU with optional title art -->
+<div id="menu">
+  <div class="panel" id="menuPanel">
+    <img id="titleArt" alt="Title Art" style="display:none">
+    <h1>Raiden and the Wing Chun Temple</h1>
+    <p>Press Play to begin your training.</p>
+    <div class="row">
+      <button id="playBtn">▶ Play</button>
+      <button id="musicBtn">Music: On</button>
+      <button id="creditsBtn">Credits</button>
+    </div>
+    <p style="font-size:12px;margin-top:10px">Controls: ⟵ ⟶ move · ⤒ jump · J punch · K interact · Focus</p>
+  </div>
+</div>
+
+<!-- AUDIO HOOKS (files should be in repo root) -->
+<audio id="audMenu"    src="menu.mp3" preload="none" loop></audio>
+<audio id="audCrane"   src="crane.mp3" preload="none" loop></audio>
+<audio id="audSnake"   src="snake.mp3" preload="none" loop></audio>
+<audio id="audTiger"   src="tiger.mp3" preload="none" loop></audio>
+<audio id="audTemple"  src="temple.mp3" preload="none" loop></audio>
+<audio id="audVictory" src="victory.mp3" preload="none"></audio>
+<audio id="audGameOver" src="gameover.mp3" preload="none"></audio>
+<audio id="audCredits" src="credits.mp3" preload="none" loop></audio>
+
+<!-- GAME VIEW -->
+<div id="stage">
+  <canvas id="canvas" width="540" height="960"></canvas>
+  <div class="hud">
+    <span class="chip">Stage: <b id="stageName">Crane: Balance</b></span>
+    <span class="chip">Lessons: <b id="lessons">0/3</b></span>
+    <div class="label">Balance</div><div class="bar"><i id="barBal"></i></div>
+    <div class="label">Focus</div><div class="bar"><i id="barFoc"></i></div>
+    <div class="label">Power</div><div class="bar"><i id="barPow"></i></div>
+  </div>
+  <!-- mobile controls -->
+  <div id="controls">
+    <div class="cluster">
+      <div class="btn" data-k="ArrowLeft">◄</div>
+      <div class="btn" data-k="ArrowRight">►</div>
+      <div class="btn" data-k="Space">⏺ Focus</div>
+    </div>
+    <div class="cluster">
+      <div class="btn" data-k="KeyJ">J</div>
+      <div class="btn" data-k="KeyK">K</div>
+      <div class="btn" data-k="ArrowUp">⤒</div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  // ----- Portrait scaling (design space 540x960) -----
+  const DESIGN_W=540, DESIGN_H=960;
+  const cvs=document.getElementById('canvas'), ctx=cvs.getContext('2d');
+  function resize(){
+    const vw=window.innerWidth, vh=window.innerHeight;
+    const scale=Math.min(vw/DESIGN_W, vh/DESIGN_H);
+    const cssW=Math.floor(DESIGN_W*scale), cssH=Math.floor(DESIGN_H*scale);
+    const dpr=Math.min(window.devicePixelRatio||1,3);
+    const rW=Math.floor(cssW*dpr), rH=Math.floor(cssH*dpr);
+    if(cvs.width!==rW||cvs.height!==rH){cvs.width=rW;cvs.height=rH;}
+    cvs.style.width=cssW+'px'; cvs.style.height=cssH+'px';
+    ctx.setTransform(rW/DESIGN_W,0,0,rH/DESIGN_H,0,0);
+  }
+  addEventListener('resize',()=>{clearTimeout(window._rt);window._rt=setTimeout(resize,100)});
+  addEventListener('orientationchange',resize); resize();
+
+  // ----- Menu & audio -----
+  const menu=document.getElementById('menu');
+  const titleArt=document.getElementById('titleArt');
+  const btnPlay=document.getElementById('playBtn');
+  const btnMusic=document.getElementById('musicBtn');
+  const btnCred=document.getElementById('creditsBtn');
+  const A={menu:audMenu, crane:audCrane, snake:audSnake, tiger:audTiger, temple:audTemple, victory:audVictory, gameover:audGameOver, credits:audCredits};
+  let musicOn=true, current=null;
+  function playTrack(aud, loop=true){
+    try{
+      if(current){current.pause();current.currentTime=0;}
+      if(musicOn && aud){aud.loop=loop; aud.volume=0.85; aud.play().catch(()=>{}); current=aud;}
+    }catch(e){console.warn(e);}
+  }
+  function startMenuAudio(){ playTrack(A.menu,true); }
+  // load title art if present
+  (function(){
+    const img=new Image(); img.onload=()=>{titleArt.src='menu-title.png'; titleArt.style.display='block';};
+    img.onerror=()=>{ /* keep gradient */ };
+    img.src='menu-title.png';
+  })();
+
+  btnPlay.onclick=()=>{
+    keys.clear(); // clear any sticky input
+    menu.style.display='none';
+    playTrack(A.crane,true);
+    game.start();
+  };
+  btnMusic.onclick=()=>{
+    musicOn=!musicOn;
+    btnMusic.textContent='Music: '+(musicOn?'On':'Off');
+    if(!musicOn && current){current.pause();}
+    else if(musicOn){
+      if(game.started) playTrack(A['stage'+game.state.stage]||A.crane,true);
+      else startMenuAudio();
+    }
+  };
+  btnCred.onclick=()=>{
+    alert('Raiden and the Wing Chun Temple — prototype build.\nMusic by you. Sprites temporary.\n© You');
+    playTrack(A.credits,true);
+  };
+  window.addEventListener('pointerdown',startMenuAudio,{once:true});
+  window.addEventListener('keydown',startMenuAudio,{once:true});
+
+  // ----- Input (keyboard + touch buttons) -----
+  const keys=new Set();
+  addEventListener('keydown',e=>keys.add(e.code));
+  addEventListener('keyup',e=>keys.delete(e.code));
+  document.querySelectorAll('.btn').forEach(b=>{
+    const k=b.dataset.k;
+    const dn=()=>{keys.add(k); b.style.transform='scale(.96)';};
+    const up=()=>{keys.delete(k); b.style.transform='scale(1)';};
+    b.addEventListener('pointerdown',dn);
+    addEventListener('pointerup',up); addEventListener('pointercancel',up); addEventListener('pointerleave',up);
+  });
+
+  // ----- HUD refs -----
+  const hud={
+    stageName:document.getElementById('stageName'),
+    lessons:document.getElementById('lessons'),
+    bal:document.getElementById('barBal'),
+    foc:document.getElementById('barFoc'),
+    pow:document.getElementById('barPow'),
+  };
+
+  // ----- Sprite loader (supports 3x4 sheet) -----
+  const sprite={img:null, ok:false, cols:4, rows:3, fw:0, fh:0, drawH:56};
+  (function(){
+    const img=new Image();
+    img.onload=()=>{ sprite.img=img; sprite.ok=true; sprite.fw=(img.width/ sprite.cols)|0; sprite.fh=(img.height/ sprite.rows)|0; };
+    img.onerror=()=>{ sprite.ok=false; };
+    img.src='raiden-sprites.png';
+  })();
+
+  // ----- Game objects -----
+  const game={
+    started:false,
+    state:{stage:0,lessons:0,balance:50,focus:0,power:0},
+    start(){ this.started=true; this.state={stage:0,lessons:0,balance:50,focus:0,power:0}; last=performance.now(); loop(last); },
+  };
+  const groundY=820; // portrait
+  function stageName(i){return ['Crane: Balance','Snake: Focus','Tiger: Power','Temple: Master'][i]}
+  function nextStage(){
+    game.state.stage=Math.min(3,game.state.stage+1);
+    hud.stageName.textContent=stageName(game.state.stage);
+    player.x=140; player.y=groundY-player.h;
+    playTrack(game.state.stage===0?A.crane:game.state.stage===1?A.snake:game.state.stage===2?A.tiger:A.temple,true);
+  }
+  const player={x:140,y:groundY-56,w:36,h:56,vx:0,vy:0,face:1,onGround:false,anim:'idle',t:0,frame:0};
+  function animFrames(name){
+    // indices for 3x4 sheet
+    if(name==='idle') return [0,1,2,3];
+    if(name==='punch') return [4,5,6,7];
+    if(name==='walk') return [8,9,10,11];
+    if(name==='jump') return [6];
+    return [0];
+  }
+  function update(dt, now){
+    // stage mechanics simple
+    if(game.state.stage===1){ game.state.focus = clamp(game.state.focus + (keys.has('Space')?45*dt:-25*dt),0,100); }
+    if(game.state.stage===2){ game.state.power = clamp(game.state.power + (keys.has('KeyK')?60*dt:-40*dt),0,100); }
+    // movement
+    const sp=140;
+    let moving=false;
+    if(keys.has('ArrowLeft')){ player.vx=-sp; player.face=-1; moving=true; }
+    else if(keys.has('ArrowRight')){ player.vx=sp; player.face=1; moving=true; }
+    else player.vx=0;
+    if(keys.has('ArrowUp') && player.onGround){ player.vy=-420; player.onGround=false; }
+    player.vy += 1200*dt;
+    player.x += player.vx*dt; player.y += player.vy*dt;
+    if(player.y>=groundY-player.h){ player.y=groundY-player.h; player.vy=0; player.onGround=true; }
+    // animation
+    player.t += dt;
+    if(!player.onGround) player.anim='jump';
+    else if(keys.has('KeyJ')) player.anim='punch';
+    else if(moving) player.anim='walk';
+    else player.anim='idle';
+    const frames=animFrames(player.anim);
+    const spd = player.anim==='walk'?0.12 : player.anim==='idle'?0.20 : player.anim==='punch'?0.08 : 0.2;
+    if(player.t>spd){ player.t=0; player.frame=(player.frame+1)%frames.length; }
+    // lesson triggers
+    if(game.state.stage===0){ // Crane, keep balance around 50 while on log
+      // simple wobble bar: simulate drifting
+      game.state.balance = clamp(game.state.balance + (moving? (player.face>0?0.6:-0.6):0) + Math.sin(now*0.002)*0.2, 0,100);
+    }
+    // reach NPC (placeholder x)
+    if(player.x>380 && game.state.stage<3){
+      game.state.lessons++; nextStage();
+    }
+    // HUD
+    hud.lessons.textContent=`${game.state.lessons}/3`;
+    hud.bal.style.width=`${game.state.balance|0}%`;
+    hud.foc.style.width=`${game.state.focus|0}%`;
+    hud.pow.style.width=`${game.state.power|0}%`;
+  }
+  function drawBackground(){
+    const g=ctx.createLinearGradient(0,0,0,DESIGN_H);
+    g.addColorStop(0,'#0b1320'); g.addColorStop(1,'#0f2036');
+    ctx.fillStyle=g; ctx.fillRect(0,0,DESIGN_W,DESIGN_H);
+    // ground
+    ctx.fillStyle='#18263c'; ctx.fillRect(0,groundY+10,DESIGN_W,DESIGN_H-(groundY+10));
+    ctx.fillStyle='#354b6b'; ctx.fillRect(0,groundY,DESIGN_W,10);
+    // log
+    ctx.fillStyle='#875b2a'; ctx.fillRect(100,groundY-10,340,10);
+  }
+  function drawPlayer(){
+    const drawH = sprite.drawH;
+    const drawW = drawH * 0.64; // keep slim proportion
+    const dx = player.x - (drawW/2);
+    const dy = player.y - (drawH);
+    if(sprite.ok && sprite.img){
+      const idx = animFrames(player.anim)[player.frame]|0;
+      const sx = (idx % sprite.cols) * sprite.fw;
+      const sy = ((idx / sprite.cols)|0) * sprite.fh;
+      ctx.save();
+      ctx.translate(dx + drawW/2, dy);
+      ctx.scale(player.face, 1);
+      ctx.drawImage(sprite.img, sx, sy, sprite.fw, sprite.fh, -drawW/2, 0, drawW, drawH);
+      ctx.restore();
+    }else{
+      // fallback rectangle
+      ctx.fillStyle='#f5c542'; ctx.fillRect(dx, dy, drawW, drawH);
+    }
+  }
+  function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+
+  // loop
+  let last=performance.now();
+  function loop(now){
+    const dt = Math.min(0.033,(now-last)/1000); last=now;
+    update(dt, now);
+    drawBackground(); drawPlayer();
+    requestAnimationFrame(loop);
+  }
+  // init HUD text
+  hud.stageName.textContent=stageName(game.state.stage);
+  // keep menu shown until Play
+})();
+</script>
+</body>
+</html>
