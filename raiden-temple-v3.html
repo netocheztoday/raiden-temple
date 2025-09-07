@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no" />
+<title>Raiden and the Wing Chun Temple – v3 (Music)</title>
+<style>
+  html,body{{margin:0;background:#0c0f14;color:#fff;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial}}
+  #ui{{position:fixed;inset:0;pointer-events:none}}
+  #canvas{{display:block;width:100vw;height:100vh;image-rendering:pixelated;touch-action:none}}
+  .hud{{position:absolute;left:12px;top:10px;background:rgba(0,0,0,.35);padding:8px 10px;border-radius:8px;font-size:14px}}
+  .bar{{height:8px;background:#222;border-radius:6px;overflow:hidden;margin:6px 0}}
+  .bar>i{{display:block;height:100%;background:linear-gradient(90deg,#aaf,#7cf);width:0%}}
+  .row{{display:flex;gap:8px;align-items:center}}
+  .token{{display:inline-block;background:#222;border:1px solid #444;border-radius:6px;padding:2px 6px;margin-right:6px}}
+  .toast{{position:absolute;left:50%;transform:translateX(-50%);bottom:14%;background:rgba(0,0,0,.55);padding:8px 12px;border-radius:8px;font-weight:600}}
+  #controls{{position:fixed;bottom:12px;left:12px;right:12px;display:flex;justify-content:space-between;gap:8px}}
+  .btn{{pointer-events:auto;touch-action:manipulation;background:#1b2533;border:1px solid #2f3d55;border-radius:12px;
+       color:#fff;font-weight:700;min-width:54px;min-height:54px;display:flex;align-items:center;justify-content:center;user-select:none}}
+  .cluster{{display:flex;gap:8px}}
+  @media (pointer:fine){{#controls{{display:none}}}}
+  /* Title menu overlay */
+  #menu{{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;
+         background:linear-gradient(180deg,rgba(0,0,0,.55),rgba(0,0,0,.75));pointer-events:auto}}
+  .title{{font-size:28px;font-weight:800;letter-spacing:.5px;text-align:center}}
+  .subtitle{{opacity:.85;margin-top:-6px;margin-bottom:8px}}
+  .cta{{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}}
+  .pill{{background:#0f172a;border:1px solid #334155;border-radius:12px;padding:10px 14px;cursor:pointer;font-weight:700;pointer-events:auto}}
+  .pill:active{{transform:scale(.98)}}
+  .small{{font-size:12px;opacity:.8}}
+  #pause{{position:fixed;right:10px;top:10px;background:#0f172a;border:1px solid #334155;border-radius:10px;padding:8px 10px;
+          display:none;gap:8px;pointer-events:auto}}
+</style>
+</head>
+<body>
+<audio id="menuTrack" src="/mnt/data/Theme song Raiden and the Wing Chun Temple.mp3" preload="auto" loop></audio>
+<audio id="bgTrack" src="/mnt/data/Path of Kung Fu.mp3" preload="auto" loop></audio>
+
+<canvas id="canvas" width="960" height="540"></canvas>
+
+<!-- Title Menu -->
+<div id="menu">
+  <div class="title">Raiden and the Wing Chun Temple</div>
+  <div class="subtitle">Press Play to begin your training</div>
+  <div class="cta">
+    <div class="pill" id="playBtn">▶ Play</div>
+    <div class="pill" id="toggleMusicBtn">🔊 Music: On</div>
+    <div class="pill" id="creditsBtn">ℹ Credits</div>
+  </div>
+  <div class="small">Controls: Arrow keys/WASD to move & jump · J punch · K interact · Space focus · Esc pause</div>
+</div>
+
+<!-- Pause mini-menu -->
+<div id="pause">
+  <button class="pill" id="resumeBtn">⏯ Resume</button>
+  <button class="pill" id="toggleMusicBtn2">🔊 Music: On</button>
+  <button class="pill" id="resetBtn">↺ Reset</button>
+</div>
+
+<div id="ui">
+  <div class="hud" id="hud">
+    <div><span class="token">Stage: <b id="stageName">Crane: Balance</b></span>
+         <span class="token">Lessons: <b id="lessons">0/3</b></span></div>
+    <div class="row">Balance
+      <div class="bar" style="width:160px"><i id="balanceBar"></i></div>
+    </div>
+    <div class="row">Focus
+      <div class="bar" style="width:160px"><i id="focusBar"></i></div>
+    </div>
+    <div class="row">Power
+      <div class="bar" style="width:160px"><i id="powerBar"></i></div>
+    </div>
+  </div>
+  <div class="toast" id="toast" style="opacity:0">Welcome! Reach each animal guide.</div>
+</div>
+
+<!-- Mobile controls -->
+<div id="controls">
+  <div class="cluster">
+    <div class="btn" data-k="ArrowLeft">◀</div>
+    <div class="btn" data-k="ArrowRight">▶</div>
+    <div class="btn" data-k="Space">⏺ Focus</div>
+  </div>
+  <div class="cluster">
+    <div class="btn" data-k="KeyJ">J</div>
+    <div class="btn" data-k="KeyK">K</div>
+    <div class="btn" data-k="ArrowUp">⤒</div>
+  </div>
+</div>
+
+<script>
+(() => {{ 'use strict';
+  const W = 960, H = 540;
+  const cvs = document.getElementById('canvas'), ctx = cvs.getContext('2d');
+  const hud = {{
+    stageName: document.getElementById('stageName'),
+    lessons: document.getElementById('lessons'),
+    bal: document.getElementById('balanceBar'),
+    foc: document.getElementById('focusBar'),
+    pow: document.getElementById('powerBar'),
+    toast: document.getElementById('toast')
+  }};
+  const menuEl = document.getElementById('menu');
+  const pauseEl = document.getElementById('pause');
+  const playBtn = document.getElementById('playBtn');
+  const toggleMusicBtn = document.getElementById('toggleMusicBtn');
+  const toggleMusicBtn2 = document.getElementById('toggleMusicBtn2');
+  const creditsBtn = document.getElementById('creditsBtn');
+  const resumeBtn = document.getElementById('resumeBtn');
+  const resetBtn = document.getElementById('resetBtn');
+
+  const menuTrack = document.getElementById('menuTrack');
+  const bgTrack = document.getElementById('bgTrack');
+  menuTrack.volume = 0.7;  // feature track on menu
+  bgTrack.volume = 0.45;   // comfortable during play
+
+  let musicOn = true;
+  let mode = 'menu'; // 'menu' | 'game' | 'paused'
+
+  // Input
+  const keys = new Set();
+  const mapKey = e => {{
+    const k = e.code;
+    if (e.type === 'keydown') keys.add(k); else keys.delete(k);
+    if(e.type === 'keydown' && k === 'Escape') togglePause();
+  }};
+  addEventListener('keydown', mapKey); addEventListener('keyup', mapKey);
+
+  // Mobile buttons
+  document.querySelectorAll('.btn').forEach(b=>{{
+    const k=b.dataset.k;
+    const down=()=>{{keys.add(k); b.style.transform='scale(0.96)';}};
+    const up=()=>{{keys.delete(k); b.style.transform='scale(1)';}};
+    b.addEventListener('pointerdown', down);
+    addEventListener('pointerup', up);
+    addEventListener('pointercancel', up);
+    addEventListener('pointerleave', up);
+  }});
+
+  // Music helpers
+  function refreshMusicLabels(){{
+    const label = musicOn ? '🔊 Music: On' : '🔇 Music: Off';
+    toggleMusicBtn.textContent = label;
+    toggleMusicBtn2.textContent = label;
+  }}
+  function setMusic(on){{
+    musicOn = on;
+    refreshMusicLabels();
+    if(mode==='menu'){{
+      if(on){{ if(bgTrack) bgTrack.pause(); menuTrack.currentTime = menuTrack.currentTime || 0; menuTrack.play().catch(()=>{{}}); }}
+      else {{ menuTrack.pause(); }}
+    }} else if(mode==='game'){{
+      if(on){{ menuTrack.pause(); bgTrack.play().catch(()=>{{}}); }}
+      else {{ bgTrack.pause(); }}
+    }}
+  }}
+  refreshMusicLabels();
+
+  // Title menu interactivity (user gesture will allow audio)
+  playBtn.addEventListener('click', () => {{
+    mode = 'game';
+    menuEl.style.display = 'none';
+    pauseEl.style.display = 'flex';
+    pauseEl.style.gap = '8px';
+    setMusic(musicOn); // switch to bg track if on
+    menuTrack.pause();
+    if(musicOn) bgTrack.play().catch(()=>{{}});
+    toast('Stage 1: Cross the log and keep balance ~50%.');
+  }});
+  toggleMusicBtn.addEventListener('click', () => setMusic(!musicOn));
+  toggleMusicBtn2.addEventListener('click', () => setMusic(!musicOn));
+  creditsBtn.addEventListener('click', () => {{
+    alert('Music\n• Menu: "Theme song Raiden and the Wing Chun Temple" (by you)\n• Gameplay: "Path of Kung Fu" (by you)');
+  }});
+  resumeBtn.addEventListener('click', () => {{ mode='game'; if(musicOn) bgTrack.play().catch(()=>{{}}); }});
+  resetBtn.addEventListener('click', () => {{ localStorage.removeItem('rt_save'); location.reload(); }});
+
+  // Start menu music after a small delay (some browsers need gesture; this will try gracefully)
+  setTimeout(()=>{{ if(mode==='menu' && musicOn) menuTrack.play().catch(()=>{{}}); }}, 300);
+
+  // Utility
+  const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+  function toast(msg, dur=2200){{hud.toast.textContent=msg; hud.toast.style.opacity=1;
+    clearTimeout(toast.t); toast.t=setTimeout(()=>{{hud.toast.style.opacity=0}}, dur);}}
+
+  // Game State
+  const state = {{ stage:0, lessons:0, balance:50, focus:0, power:0 }};
+  const groundY = H-80;
+
+  class Entity {{ constructor(x,y,w,h){{Object.assign(this,{{x,y,w,h,vx:0,vy:0}});}} }}
+  class Player extends Entity {{
+    constructor(){{super(80, groundY-42, 26, 42); this.onGround=false; this.facing=1; this.combo=0; this.comboT=0;}}
+    step(dt){{
+      if(mode!=='game') return;
+      const sp = 170;
+      if (keys.has('ArrowLeft')||keys.has('KeyA')) {{ this.vx=-sp; this.facing=-1; }}
+      else if (keys.has('ArrowRight')||keys.has('KeyD')) {{ this.vx=sp; this.facing=1; }}
+      else this.vx=0;
+      if ((keys.has('ArrowUp')||keys.has('KeyW')) && this.onGround){{ this.vy=-300; this.onGround=false; }}
+      this.vy += 900*dt;
+      this.x += this.vx*dt; this.y += this.vy*dt;
+      if (this.y+this.h >= groundY){{ this.y=groundY-this.h; this.vy=0; this.onGround=true; }}
+      if (keys.has('KeyJ')) {{ this.combo = Math.min(3, this.combo + 1); this.comboT = 0.2; }}
+      this.comboT = Math.max(0, this.comboT - dt); if (this.comboT===0) this.combo=0;
+    }}
+    draw(){{
+      ctx.save(); ctx.translate(this.x|0, this.y|0);
+      ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.fillRect(2, this.h-2, this.w, 4);
+      ctx.fillStyle = '#f5f5f5'; ctx.fillRect(6,10,14,22);
+      ctx.fillStyle = '#ffd5b4'; ctx.fillRect(6,0,14,12);
+      ctx.fillStyle = '#4c6ef5'; ctx.fillRect(0,32,12,10); ctx.fillRect(14,32,12,10);
+      ctx.fillStyle = '#ffd5b4'; ctx.fillRect(this.facing>0?20:-8,14,8,6);
+      ctx.fillStyle = '#e11d48'; ctx.fillRect(6,12,14,2); ctx.fillRect(this.facing>0?-6:20,10,6,2);
+      if (this.combo>0){{ ctx.fillStyle='#aaf'; const len=10+this.combo*8; ctx.fillRect(this.facing>0?this.w:-len,16,len,3); }}
+      ctx.restore();
+    }}
+  }}
+  const player = new Player();
+  const npcs=[
+    {{stage:0,name:'Crane',x:720,y:groundY-40,color:'#a3e635',line:'"Balance brings structure."'}},
+    {{stage:1,name:'Snake',x:760,y:groundY-40,color:'#22d3ee',line:'"Focus. Flow. Be still and sharp."'}},
+    {{stage:2,name:'Tiger',x:760,y:groundY-48,color:'#f59e0b',line:'"Power lives inside you."'}},
+    {{stage:3,name:'Master',x:600,y:groundY-46,color:'#f472b6',line:'"Wing Chun is here — in your heart."'}}
+  ];
+  const obstacles={{
+    0:[{{x:300,w:300,type:'log'}}],
+    1:[{{x:280,w:120,type:'spike'}},{{x:480,w:140,type:'spike'}},{{x:620,w:60,type:'spike'}}],
+    2:[{{x:320,w:40,type:'boulder'}},{{x:480,w:40,type:'boulder'}},{{x:640,w:120,type:'gate'}}],
+    3:[]
+  }};
+  function drawBackground(stage){{
+    const g=ctx.createLinearGradient(0,0,0,H);
+    if(stage===0){{g.addColorStop(0,'#0a1729');g.addColorStop(1,'#0f2138');}}
+    if(stage===1){{g.addColorStop(0,'#0a1c17');g.addColorStop(1,'#14332b');}}
+    if(stage===2){{g.addColorStop(0,'#1a1111');g.addColorStop(1,'#2b1a1a');}}
+    if(stage===3){{g.addColorStop(0,'#0f1b2b');g.addColorStop(1,'#18324f');}}
+    ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+    ctx.fillStyle='#1e293b'; ctx.fillRect(0,groundY,W,H-groundY);
+    if(stage===0){{ctx.fillStyle='#1d4ed8'; ctx.fillRect(280, groundY+6, 360, 16);}}
+    if(stage===3){{ctx.fillStyle='#0ea5e9'; ctx.fillRect(420, groundY-20, 280, 20);}}
+  }}
+  function drawNPC(n){{ctx.save();ctx.translate(n.x,n.y);ctx.fillStyle=n.color;ctx.fillRect(-10,-20,20,20);ctx.fillStyle='#222';ctx.fillRect(-12,0,24,4);ctx.restore();}}
+  function aabb(a,b){{return !(a.x+a.w<b.x||a.x>b.x+b.w||a.y+a.h<b.y-b.h||a.y>b.y);}}
+  function stageName(i){{return ['Crane: Balance','Snake: Focus','Tiger: Power','Temple: Master'][i]}}
+  function nextStage(){{state.stage=Math.min(3,state.stage+1);hud.stageName.textContent=stageName(state.stage);player.x=80;player.y=groundY-42;player.vx=player.vy=0;toast(state.stage<3?'New lesson ahead.':'You found the Wing Chun Temple.');}}
+  function togglePause(){{ if(mode==='game'){{ mode='paused'; bgTrack.pause(); }} else if(mode==='paused'){{ mode='game'; if(musicOn) bgTrack.play().catch(()=>{{}}); }} }}
+
+  let last=performance.now();
+  function loop(now){{
+    const dt=Math.min(0.033,(now-last)/1000);last=now;
+    // Stage mechanics
+    if(mode==='game'){{ 
+      if(state.stage===0){{const log=obstacles[0][0];const onLog=player.x+player.w>log.x&&player.x<log.x+log.w&&player.onGround;if(onLog){{state.balance+=Math.sin(now*0.004)*0.4;if(keys.has('ArrowLeft')||keys.has('KeyA'))state.balance-=0.6;if(keys.has('ArrowRight')||keys.has('KeyD'))state.balance+=0.6;state.balance=clamp(state.balance,0,100);if(state.balance<5||state.balance>95){{player.y=groundY-42;player.x=log.x-40;state.balance=50;toast('Wobble… steady yourself!');}}}}}}
+      if(state.stage===1){{state.focus=clamp(state.focus+(keys.has('Space')?45*dt:-25*dt),0,100);}}
+      if(state.stage===2){{if(keys.has('KeyK'))state.power=clamp(state.power+60*dt,0,100);else state.power=clamp(state.power-40*dt,0,100);}}
+    }}
+    player.step(dt);
+
+    // Interactions
+    const obs=obstacles[state.stage];
+    for(const o of obs){{
+      if(state.stage===1&&o.type==='spike'){{const flashing=Math.floor(now/600)%2===0;if(flashing&&aabb({{x:player.x,y:player.y,w:player.w,h:player.h}},{{x:o.x,y:groundY,w:o.w,h:28}})){{if(state.focus<70){{player.x=80;toast('Be still and sharp. (Space to focus)');}}}}}
+      if(state.stage===2){{if(o.type==='boulder'&&Math.abs(player.x-(o.x))<36&&state.power>65){{o.x+=120;toast('Inner power moves mountains!');}}
+        if(o.type==='gate'&&Math.abs(player.x-(o.x+o.w/2))<40&&state.power>80){{o.w=Math.max(0,o.w-160);toast('Gate yields to calm strength.');}}}}
+    }}
+    const npc=npcs.find(n=>n.stage===state.stage);
+    if(npc&&Math.abs(player.x-npc.x)<40){{
+      if(state.stage===0&&state.balance>=45&&state.balance<=55){{state.lessons++;toast(npc.line);nextStage();}}
+      else if(state.stage===1&&state.focus>=80){{state.lessons++;toast(npc.line);nextStage();}}
+      else if(state.stage===2&&state.power>=80){{state.lessons++;toast(npc.line);nextStage();}}
+      else if(state.stage===3){{toast(npc.line+'\nCalm. Proud. Strong.');}}
+    }}
+
+    // Draw
+    drawBackground(state.stage);
+    for(const o of obstacles[state.stage]){{}}
+    drawNPC(npc);
+    player.draw();
+
+    // HUD
+    hud.lessons.textContent=`${{state.lessons}}/3`;
+    hud.bal.style.width=`${{state.balance|0}}%`;
+    hud.foc.style.width=`${{state.focus|0}}%`;
+    hud.pow.style.width=`${{state.power|0}}%`;
+
+    requestAnimationFrame(loop);
+  }}
+  hud.stageName.textContent=stageName(state.stage);
+  requestAnimationFrame(loop);
+}})();
+</script>
+</body>
+</html>
