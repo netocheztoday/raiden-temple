@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Raiden and the Wing Chun Temple</title>
+  <style>
+    :root { --bg:#000; --panel:#0b1622; --glass:#101826cc; --white:#fff; }
+    * { box-sizing:border-box; touch-action: manipulation; }
+    html,body { height:100%; margin:0; background:var(--bg); color:var(--white); font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;}
+    #wrap { height:100%; display:flex; align-items:center; justify-content:center; }
+    #menu { text-align:center; width:100%; display:flex; flex-direction:column; align-items:center; gap:14px; }
+    #menu img { max-width:92vw; max-height:60vh; height:auto; display:block; }
+    .btn { display:block; margin:0 auto; padding:12px 22px; font-size:18px; border:2px solid #fff8; background:transparent; color:#fff; border-radius:10px; }
+    .btn:active { transform:scale(.98); }
+    #stage { display:none; width:100%; height:100%; display:flex; align-items:center; justify-content:center; }
+    #game { background:linear-gradient(#0b1622,#0f1e2f); border-radius:14px; box-shadow:0 20px 60px #000a; image-rendering:pixelated; }
+    #hud { position:fixed; top:10px; left:10px; padding:8px 10px; background:#161b22cc; border:1px solid #2a2f3a; border-radius:10px; font-size:13px; display:none; }
+    #hud b{color:#9cd2ff}
+    #soundGate { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:#000d; }
+    #soundGate .inner { padding:14px 18px; background:#151b24; border:1px solid #2a2f3a; border-radius:12px; text-align:center; }
+  </style>
+</head>
+<body>
+  <div id="wrap">
+    <div id="menu">
+      <img src="menu-title.png" alt="Title Art">
+      <button id="playBtn" class="btn">Play</button>
+      <button id="musicBtn" class="btn">Music: On</button>
+      <button id="creditsBtn" class="btn">Credits</button>
+    </div>
+    <div id="stage">
+      <canvas id="game" width="360" height="640"></canvas>
+    </div>
+  </div>
+  <div id="hud">FPS <b id="fps">—</b> · Sprite <b id="sok">loading</b> · Music <b id="mok">off</b></div>
+  <div id="soundGate"><div class="inner">
+    <div style="font-size:18px;margin-bottom:8px;">Tap to enable sound</div>
+    <button id="enableSound" class="btn">Enable</button>
+  </div></div>
+
+<script>
+// ---------- Audio (robust unlock) ----------
+let musicOn = true, inGame=false;
+const menuMusic = new Audio('menu.mp3'); menuMusic.loop=true; menuMusic.preload='auto';
+const levelMusic = new Audio('crane.mp3'); levelMusic.loop=true; levelMusic.preload='auto';
+const mok=document.getElementById('mok');
+function tryPlay(a){ return a.play().catch(()=>{}); }
+function setMusicState(){
+  mok.textContent = (musicOn ? (inGame?'level':'menu') : 'off');
+  if(!musicOn){ menuMusic.pause(); levelMusic.pause(); return; }
+  if(inGame){ menuMusic.pause(); tryPlay(levelMusic); }
+  else { levelMusic.pause(); tryPlay(menuMusic); }
+}
+// Mobile requires user gesture: gate if first play fails
+const soundGate = document.getElementById('soundGate');
+const enableSoundBtn = document.getElementById('enableSound');
+enableSoundBtn.onclick = ()=>{ musicOn=true; soundGate.style.display='none'; setMusicState(); };
+
+// ---------- Menu buttons ----------
+const playBtn=document.getElementById('playBtn');
+const musicBtn=document.getElementById('musicBtn');
+const creditsBtn=document.getElementById('creditsBtn');
+const menu = document.getElementById('menu');
+const stage = document.getElementById('stage');
+musicBtn.onclick = ()=>{ musicOn=!musicOn; musicBtn.textContent='Music: '+(musicOn?'On':'Off'); setMusicState(); };
+
+playBtn.onclick = async()=>{
+  // Try to start audio; if blocked, show gate
+  if(musicOn){
+    const ok = await menuMusic.play().then(()=>true).catch(()=>false);
+    if(!ok){ soundGate.style.display='flex'; }
+  }
+  menu.style.display='none';
+  stage.style.display='flex';
+  hud.style.display='block';
+  inGame=true;
+  setMusicState();
+  startGameLoop();
+};
+
+creditsBtn.onclick = ()=>{ alert('Raiden and the Wing Chun Temple — prototype\\nArt, music & design by you!'); };
+
+// ---------- Canvas Fit ----------
+const cvs=document.getElementById('game'); const ctx=cvs.getContext('2d');
+function fitCanvas(){
+  const maxW=Math.min(420, innerWidth*0.96);
+  const maxH=Math.min(740, innerHeight*0.96);
+  const targetW=Math.max(320, Math.min(360, maxW));
+  const targetH=Math.max(600, Math.min(640, maxH));
+  cvs.style.width=targetW+'px'; cvs.style.height=targetH+'px';
+}
+addEventListener('resize', fitCanvas); fitCanvas();
+
+// ---------- Sprite (3x3 auto-size) ----------
+const sprite = new Image();
+sprite.src='raiden-sprites.png?v=3';
+let SPR_W=64, SPR_H=96, COLS=3, ROWS=3, spriteReady=false;
+const sok=document.getElementById('sok');
+sprite.onload=()=>{ SPR_W=(sprite.naturalWidth/COLS)|0; SPR_H=(sprite.naturalHeight/ROWS)|0; spriteReady=true; sok.textContent='ok'; };
+sprite.onerror=()=>{ sok.textContent='missing'; };
+
+// ---------- Player ----------
+const GROUND_Y = 560;
+const DRAW_W = 96, DRAW_H = 144; // scaled down
+const player = { x:(cvs.width-DRAW_W)/2, y:GROUND_Y-DRAW_H, vx:0, vy:0, onGround:true, facing:1, state:'idle', anim:0, tick:0 };
+
+const anims = {
+  idle:{frames:[0,1,2],speed:12},
+  walk:{frames:[3,4,5],speed:8},
+  punch:{frames:[6,7],speed:6,hold:10},
+  jump:{frames:[8],speed:12}
+};
+
+// Simple touch controls (left/right/jump)
+const keys={left:false,right:false,up:false,attack:false};
+addEventListener('keydown',e=>{
+  if(e.key==='ArrowLeft'||e.key==='a') keys.left=true;
+  if(e.key==='ArrowRight'||e.key==='d') keys.right=true;
+  if(e.key===' '||e.key==='w'||e.key==='ArrowUp') keys.up=true;
+  if(e.key==='j') keys.attack=true;
+});
+addEventListener('keyup',e=>{
+  if(e.key==='ArrowLeft'||e.key==='a') keys.left=false;
+  if(e.key==='ArrowRight'||e.key==='d') keys.right=false;
+  if(e.key===' '||e.key==='w'||e.key==='ArrowUp') keys.up=false;
+  if(e.key==='j') keys.attack=false;
+});
+
+// ---------- Loop ----------
+const hud=document.getElementById('hud'); const fpsEl=document.getElementById('fps');
+let last=performance.now(), frames=0, fps=0;
+function update(dt){
+  const speed=110; // px/s
+  player.vx = (keys.left?-speed:0) + (keys.right?speed:0);
+  player.x += player.vx * dt;
+  if(keys.left) player.facing=-1; if(keys.right) player.facing=1;
+  if(keys.up && player.onGround){ player.vy=-520; player.onGround=false; }
+  player.vy += 1400*dt;
+  player.y += player.vy*dt;
+  if(player.y+DRAW_H>=GROUND_Y){ player.y=GROUND_Y-DRAW_H; player.vy=0; player.onGround=true; }
+  if(!player.onGround) player.state='jump';
+  else if(keys.attack) player.state='punch';
+  else if(Math.abs(player.vx)>1) player.state='walk';
+  else player.state='idle';
+
+  const a=anims[player.state]; player.tick++;
+  if(player.state==='punch'){
+    if(player.tick % a.speed===0){ player.anim++; if(player.anim>=a.frames.length){ player.anim=a.frames.length-1; if(player.tick>a.speed*(a.hold||8)){ keys.attack=false; player.state='idle'; player.anim=0; player.tick=0; } } }
+  } else {
+    if(player.tick % a.speed===0){ player.anim=(player.anim+1)%a.frames.length; }
+  }
+}
+function draw(){
+  ctx.clearRect(0,0,cvs.width,cvs.height);
+  // ground/backdrop
+  ctx.fillStyle='#2a2f3a'; ctx.fillRect(0,GROUND_Y+20,cvs.width,cvs.height-(GROUND_Y+20));
+  ctx.fillStyle='#6e4b2e'; ctx.fillRect(40,GROUND_Y-10,cvs.width-80,12);
+  // player
+  const a=anims[player.state]; const id=a.frames[player.anim|0];
+  const sx=(id%COLS)*SPR_W, sy=((id/COLS)|0)*SPR_H;
+  ctx.save();
+  if(player.facing===-1){ ctx.translate(player.x+DRAW_W/2,0); ctx.scale(-1,1); ctx.translate(-(player.x+DRAW_W/2),0); }
+  ctx.imageSmoothingEnabled=false;
+  if(spriteReady) ctx.drawImage(sprite, sx,sy,SPR_W,SPR_H, player.x,player.y, DRAW_W,DRAW_H);
+  else { ctx.fillStyle='#ffd34d'; ctx.fillRect(player.x,player.y,DRAW_W,DRAW_H); }
+  ctx.restore();
+}
+function loop(ts){
+  const dt=Math.min(0.033,(ts-last)/1000); last=ts;
+  update(dt); draw();
+  frames++; if(frames%10===0){ fps=Math.round(10/dt); fpsEl.textContent=fps; }
+  requestAnimationFrame(loop);
+}
+function startGameLoop(){ last=performance.now(); requestAnimationFrame(loop); }
+</script>
+</body>
+</html>
