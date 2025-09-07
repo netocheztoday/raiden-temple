@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Raiden and the Wing Chun Temple</title>
+  <style>
+    body { margin:0; background:black; display:flex; justify-content:center; align-items:center; height:100vh; }
+    #menu { text-align:center; }
+    #menu img { max-width:90%; height:auto; }
+    #menu button { display:block; margin:10px auto; padding:10px 20px; font-size:18px; }
+    canvas { display:none; background:#0b1622; }
+  </style>
+</head>
+<body>
+  <div id="menu">
+    <img src="menu-title.png" alt="Title">
+    <button id="playBtn">Play</button>
+    <button id="musicBtn">Music: On</button>
+    <button id="creditsBtn">Credits</button>
+  </div>
+  <canvas id="game" width="360" height="640"></canvas>
+
+  <script>
+  const cvs = document.getElementById('game');
+  const ctx = cvs.getContext('2d');
+  const menu = document.getElementById('menu');
+  const playBtn = document.getElementById('playBtn');
+  const musicBtn = document.getElementById('musicBtn');
+
+  let musicOn = true;
+  const music = new Audio('menu.mp3'); music.loop = true; music.play();
+
+  musicBtn.onclick = ()=>{
+    musicOn = !musicOn;
+    musicBtn.textContent = "Music: " + (musicOn? "On":"Off");
+    if(musicOn) music.play(); else music.pause();
+  };
+
+  playBtn.onclick = ()=>{
+    menu.style.display='none';
+    cvs.style.display='block';
+    if(musicOn){ music.pause(); new Audio('crane.mp3').play(); }
+    startGameLoop();
+  };
+
+  /* ===== Sprite & Player Setup for 3x3 sheet ===== */
+  const groundY = 560;
+  const spriteImg = new Image();
+  spriteImg.src = 'raiden-sprites.png';  // must be 3 cols x 3 rows
+  const DRAW_W = 120, DRAW_H = 180;
+
+  const player = {
+    x: (cvs.width - DRAW_W)/2,
+    y: groundY - DRAW_H,
+    vx: 0, vy: 0, onGround:true, facing:1,
+    state:'idle', animIndex:0, animTimer:0
+  };
+
+  const anims = {
+    idle:  { frames:[0,1,2], speed:10 },
+    walk:  { frames:[3,4,5], speed:8 },
+    punch: { frames:[6,7],   speed:6, hold:8 },
+    jump:  { frames:[8],     speed:12 }
+  };
+
+  let FRAME_W=256, FRAME_H=384, COLS=3, ROWS=3;
+  spriteImg.onload = ()=>{
+    FRAME_W = Math.floor(spriteImg.width / COLS);
+    FRAME_H = Math.floor(spriteImg.height / ROWS);
+  };
+
+  const keys={left:false,right:false,jump:false,j:false};
+  document.addEventListener('keydown', e=>{
+    if(e.key==='ArrowLeft'||e.key==='a') keys.left=true;
+    if(e.key==='ArrowRight'||e.key==='d') keys.right=true;
+    if(e.key===' '||e.key==='w'||e.key==='ArrowUp') keys.jump=true;
+    if(e.key==='j') keys.j=true;
+  });
+  document.addEventListener('keyup', e=>{
+    if(e.key==='ArrowLeft'||e.key==='a') keys.left=false;
+    if(e.key==='ArrowRight'||e.key==='d') keys.right=false;
+    if(e.key===' '||e.key==='w'||e.key==='ArrowUp') keys.jump=false;
+    if(e.key==='j') keys.j=false;
+  });
+
+  function update(){
+    const speed=2.0; player.vx=0;
+    if(keys.left){player.vx=-speed;player.facing=-1;}
+    if(keys.right){player.vx=speed;player.facing=1;}
+    player.x+=player.vx;
+    if(keys.jump&&player.onGround){player.vy=-8.5;player.onGround=false;}
+    player.vy+=0.45; player.y+=player.vy;
+    if(player.y+DRAW_H>=groundY){player.y=groundY-DRAW_H;player.vy=0;player.onGround=true;}
+    if(!player.onGround) player.state='jump';
+    else if(keys.j) player.state='punch';
+    else if(Math.abs(player.vx)>0.01) player.state='walk';
+    else player.state='idle';
+    const a=anims[player.state]; player.animTimer++;
+    if(player.state==='punch'){
+      if(player.animTimer%a.speed===0){
+        player.animIndex++;
+        if(player.animIndex>=a.frames.length){
+          player.animIndex=a.frames.length-1;
+          if(player.animTimer>a.speed*(a.hold??6)){
+            keys.j=false; player.state='idle'; player.animIndex=0; player.animTimer=0;
+          }
+        }
+      }
+    } else {
+      if(player.animTimer%a.speed===0){
+        player.animIndex=(player.animIndex+1)%a.frames.length;
+      }
+    }
+  }
+
+  function draw(){
+    ctx.clearRect(0,0,cvs.width,cvs.height);
+    ctx.fillStyle='#2a2f3a'; ctx.fillRect(0,groundY+20,cvs.width,cvs.height-(groundY+20));
+    ctx.fillStyle='#6e4b2e'; ctx.fillRect(40,groundY-10,cvs.width-80,12);
+    const a=anims[player.state]; const frameId=a.frames[player.animIndex|0];
+    const col=frameId%COLS; const row=Math.floor(frameId/COLS);
+    ctx.save(); if(player.facing===-1){ctx.translate(player.x+DRAW_W/2,0);ctx.scale(-1,1);ctx.translate(-(player.x+DRAW_W/2),0);}
+    ctx.imageSmoothingEnabled=false;
+    ctx.drawImage(spriteImg,col*FRAME_W,row*FRAME_H,FRAME_W,FRAME_H,player.x,player.y,DRAW_W,DRAW_H);
+    ctx.restore();
+  }
+
+  function loop(){update();draw();requestAnimationFrame(loop);}
+  function startGameLoop(){player.x=(cvs.width-DRAW_W)/2;player.y=groundY-DRAW_H;requestAnimationFrame(loop);}
+  </script>
+</body>
+</html>
