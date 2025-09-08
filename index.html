@@ -5,54 +5,72 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
 <title>Raiden and the Wing Chun Temple</title>
 <style>
-  :root{ --frame-max: 960px; --pad: 10px; }
+  :root{ --frame-max: 980px; --pad: 10px; }
   html,body{margin:0;background:#000;color:#fff;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
   #frame{max-width:var(--frame-max); margin:0 auto; padding:0 var(--pad);}
-  #menu{display:flex;flex-direction:column;align-items:center;gap:14px;padding:16px 0;}
-  #menu img{width:100%;height:auto;display:block;border-radius:8px}
-  .btn{background:#111;border:2px solid #fff;color:#fff;border-radius:8px;padding:12px 22px;font-size:18px}
+  /* MENU */
+  #menu{display:flex;flex-direction:column;align-items:center;gap:14px;padding:18px 0}
+  #menu img{max-width:100%;height:auto;border-radius:8px}
+  .btn{background:#111;border:2px solid #fff;color:#fff;border-radius:10px;padding:12px 22px;font-size:18px}
   .btn:active{transform:translateY(1px)}
+
+  /* GAME AREA */
   #wrap{position:relative}
   #cvs{display:none;width:100%;height:auto;background:#0b1622;image-rendering:pixelated;border-radius:12px}
-  #hud{position:absolute;left:10px;top:10px;background:rgba(0,0,0,.55);padding:6px 10px;border-radius:8px;
-       font-family:monospace;font-size:14px;display:none}
-  #tag{position:absolute;left:10px;top:10px;background:#0b0e12;color:#cfe1ff;
-       padding:4px 8px;border-radius:10px;font:12px/1.2 monospace;opacity:.85;display:none}
-  #controls{display:none;gap:10px;justify-content:space-between;margin:10px 0}
-  .pad{flex:1;min-width:80px;height:64px;font-size:22px;border:2px solid #303a46;background:#141c26;color:#fff;border-radius:12px}
+  #hud{position:absolute;left:10px;top:10px;display:none;gap:8px;align-items:center}
+  .tag{background:#0b0e12;color:#cfe1ff;padding:6px 10px;border-radius:10px;font:14px/1.2 monospace;opacity:.9}
+  #hearts{display:flex;gap:6px;margin-left:6px}
+  .heart{width:22px;height:22px;background:#ffd54d;border:2px solid #ffc107;border-radius:5px;box-shadow:0 0 0 2px #8b5a00 inset; transform:rotate(-45deg)}
+  .heart:before,.heart:after{content:"";position:absolute;width:22px;height:22px;background:#ffd54d;border:2px solid #ffc107;border-radius:50%}
+  .heart:before{left:-12px;top:-1px}
+  .heart:after{left:-1px;top:-12px}
+  .heart.dead{opacity:.25;filter:grayscale(1)}
+
+  /* TOUCH CONTROLS */
+  #controls{display:none;gap:14px;justify-content:space-between;margin:10px 0}
+  .pad{flex:1;min-width:90px;height:64px;font-size:22px;border:2px solid #2e3a46;background:#111923;color:#fff;border-radius:14px}
   .pad:active{filter:brightness(1.2)}
-  #fade{position:absolute;inset:0;background:#000;opacity:0;pointer-events:none;transition:opacity .25s}
 </style>
 </head>
 <body>
-<div id="frame">
-  <div id="menu">
-    <img src="menu-title.png" alt="Raiden and the Wing Chun Temple">
-    <button class="btn" onclick="startGame()">Play</button>
-    <button class="btn" id="musicBtn" onclick="toggleMusic()">Music: On</button>
-    <button class="btn" onclick="alert('Credits\\nMusic & Art: You\\nCode helper: ChatGPT')">Credits</button>
+  <div id="frame">
+    <!-- MENU -->
+    <div id="menu">
+      <img src="menu-title.png" alt="Raiden and the Wing Chun Temple" />
+      <button class="btn" onclick="startGame()">Play</button>
+      <button class="btn" id="musicBtn" onclick="toggleMusic()">Music: On</button>
+      <button class="btn" onclick="alert('Credits\\nMusic & Art: You\\nCode helper: ChatGPT')">Credits</button>
+    </div>
+
+    <!-- GAME -->
+    <div id="wrap">
+      <!-- Landscape canvas -->
+      <canvas id="cvs" width="800" height="450"></canvas>
+
+      <!-- HUD -->
+      <div id="hud">
+        <div id="stageTag" class="tag">Stage: —</div>
+        <div id="spriteTag" class="tag">sprite: …</div>
+        <div id="hearts"></div>
+      </div>
+    </div>
+
+    <!-- Touch controls -->
+    <div id="controls">
+      <button class="pad" ontouchstart="keys.left=1"  ontouchend="keys.left=0">◀</button>
+      <button class="pad" ontouchstart="keys.right=1" ontouchend="keys.right=0">▶</button>
+      <button class="pad" ontouchstart="keys.punch=1" ontouchend="keys.punch=0">J</button>
+      <button class="pad" ontouchstart="keys.jump=1"  ontouchend="keys.jump=0">⎵</button>
+    </div>
   </div>
-  <div id="wrap">
-    <canvas id="cvs" width="800" height="450"></canvas>
-    <div id="hud">Stage: <span id="stageName">—</span></div>
-    <div id="tag"></div>
-    <div id="fade"></div>
-  </div>
-  <div id="controls">
-    <button class="pad" ontouchstart="keys.left=1"  ontouchend="keys.left=0">◀</button>
-    <button class="pad" ontouchstart="keys.right=1" ontouchend="keys.right=0">▶</button>
-    <button class="pad" ontouchstart="keys.punch=1" ontouchend="keys.punch=0">J</button>
-    <button class="pad" ontouchstart="keys.jump=1"  ontouchend="keys.jump=0">␣</button>
-  </div>
-</div>
 
 <script>
-/* ===== AUDIO ===== */
+/* ================== AUDIO ================== */
 let musicOn = true, currentMusic = "menu";
 const tracks = {};
 ["menu","crane","snake","tiger","gates","temple","victory","gameover","credits"].forEach(n=>{
-  const a = new Audio(n + ".mp3");
-  a.loop = (n!=="victory" && n!=="gameover");
+  const a = new Audio(n+".mp3");
+  a.loop = !["victory","gameover"].includes(n);
   tracks[n] = a;
 });
 function stopAll(){ for(const a of Object.values(tracks)){ a.pause(); a.currentTime=0; } }
@@ -63,77 +81,308 @@ function toggleMusic(){
   if(musicOn) playMusic(currentMusic); else stopAll();
 }
 
-/* ===== CANVAS / HELPERS ===== */
+/* ================== CANVAS ================== */
 const cvs = document.getElementById("cvs");
-const ctx = cvs.getContext("2d",{alpha:true});
+const ctx = cvs.getContext("2d", { alpha:true });
 ctx.imageSmoothingEnabled = false;
-function loadImg(src){ const i=new Image(); i.src=src+"?v="+Date.now(); return i; }
-function drawCover(img,dw,dh){
-  const iw=img.naturalWidth, ih=img.naturalHeight; if(!iw||!ih) return;
-  const r=Math.max(dw/iw,dh/ih), sw=Math.floor(dw/r), sh=Math.floor(dh/r);
-  const sx=Math.floor((iw-sw)/2), sy=Math.floor((ih-sh)/2);
-  ctx.drawImage(img,sx,sy,sw,sh,0,0,dw,dh);
-}
+const W = cvs.width, H = cvs.height;
+const GROUND_Y = H - 70;
 
-/* ===== BACKGROUNDS ===== */
+/* ================== ASSETS ================== */
+const stageTag = document.getElementById("stageTag");
+const spriteTag = document.getElementById("spriteTag");
+const heartsBox = document.getElementById("hearts");
+
+function loadImg(src){ const i = new Image(); i.src = src+"?v="+Date.now(); return i; }
+
 const BG = {
-  room: loadImg("bg-room.png"),
-  field: loadImg("bg-field.png"),
-  crane: loadImg("bg-crane.png"),
-  snake: loadImg("bg-snake.png"),
-  tiger: loadImg("bg-tiger.png"),
+  room:        loadImg("bg-room.png"),
+  field:       loadImg("bg-field.png"),
+  crane:       loadImg("bg-crane.png"),
+  snake:       loadImg("bg-snake.png"),
+  tiger:       loadImg("bg-tiger.png"),
   templegates: loadImg("bg-templegates.png"),
-  temple: loadImg("bg-temple.png"),
+  temple:      loadImg("bg-temple.png"),
+  hidden:      loadImg("bg-hidden.png") // optional; if missing we’ll fallback to room
 };
 
-/* ===== SPRITE ===== */
+/* ----- Scale a background image to cover the canvas (landscape) ----- */
+function drawBg(img){
+  if(!img || !img.complete) return;
+  const iw = img.naturalWidth, ih = img.naturalHeight;
+  const scale = Math.max(W/iw, H/ih);
+  const dw = Math.floor(iw*scale), dh = Math.floor(ih*scale);
+  const dx = Math.floor((W - dw)/2), dy = Math.floor((H - dh)/2);
+  ctx.drawImage(img, dx, dy, dw, dh);
+}
+
+/* ================== SPRITE (3x3 grid) ================== */
 let spriteReady=false, FW=0, FH=0, COLS=3, ROWS=3;
-const sprite=new Image();
-sprite.src="raiden-sprites.png?v="+Date.now();
-sprite.onload=()=>{ FW=sprite.naturalWidth/COLS; FH=sprite.naturalHeight/ROWS; spriteReady=true; };
+const sprite = new Image();
+sprite.src = "raiden-sprites.png?v="+Date.now();
+sprite.onload = ()=>{
+  FW = Math.floor(sprite.naturalWidth / COLS);
+  FH = Math.floor(sprite.naturalHeight / ROWS);
+  spriteReady = true;
+  spriteTag.textContent = "sprite: ok";
+};
+sprite.onerror = ()=>{ spriteTag.textContent = "sprite: missing"; };
 
-/* ===== PLAYER ===== */
-const GROUND_Y=370, DRAW_W=54,DRAW_H=81,GRAV=0.5,JUMP_V=-9;
-const keys={left:0,right:0,jump:0,punch:0};
-const player={x:120,y:GROUND_Y-DRAW_H,vx:0,vy:0,facing:1,state:"idle",tick:0,airJumps:0};
-const anims={idle:{frames:[0,1,2],speed:12},walk:{frames:[3,4,5],speed:8},punch:{frames:[6,7],speed:6},jump:{frames:[8],speed:12}};
+/* ================== PLAYER ================== */
+let DRAW_W = 64, DRAW_H = 96;
+const player = {
+  x:(W-DRAW_W)/2, y:GROUND_Y-DRAW_H, vx:0, vy:0, facing:1,
+  state:"idle", tick:0, jumps:0
+};
+const anims = {
+  idle : { frames:[0,1,2], speed:12 },
+  walk : { frames:[3,4,5], speed: 8 },
+  punch: { frames:[6,7],   speed: 6 },
+  jump : { frames:[8],     speed:12 }
+};
 
-/* ===== LEVELS ===== */
-function door(x){ return {x,y:GROUND_Y-120,w:44,h:120}; }
-const LEVELS=[
-  {id:"room",name:"Room",music:"menu",bg:BG.room,doors:[door(14),door(742)],nextLeft:null,nextRight:"field"},
-  {id:"field",name:"Field",music:"crane",bg:BG.field,doors:[door(14),door(742)],pit:{x:370,w:60},nextLeft:"room",nextRight:"crane"},
-  {id:"crane",name:"Crane",music:"crane",bg:BG.crane,doors:[door(14),door(742)],nextLeft:"field",nextRight:"snake"},
-  {id:"snake",name:"Snake",music:"snake",bg:BG.snake,doors:[door(14),door(742)],nextLeft:"crane",nextRight:"tiger"},
-  {id:"tiger",name:"Tiger",music:"tiger",bg:BG.tiger,doors:[door(14),door(742)],nextLeft:"snake",nextRight:"templegates"},
-  {id:"templegates",name:"Temple Gates",music:"gates",bg:BG.templegates,doors:[door(14),door(742)],nextLeft:"tiger",nextRight:"temple"},
-  {id:"temple",name:"Temple",music:"temple",bg:BG.temple,doors:[door(14)],nextLeft:"room",nextRight:null}
+const keys = { left:0, right:0, jump:0, punch:0 };
+
+/* ================== LEVELS & FLOW ================== */
+function door(x){ return {x, y:GROUND_Y-120, w:44, h:120}; }
+
+const LEVELS = [
+  // Home: one door to the right → Field
+  { id:"room", name:"Room", music:"menu", bg:BG.room,
+    doors:[door(W-58)], nextLeft:null, nextRight:"field" },
+
+  // Field with pit
+  { id:"field", name:"Field", music:"crane", bg:BG.field,
+    doors:[door(14), door(W-58)], pit:{x:Math.floor(W/2)-30, w:60},
+    nextLeft:"room", nextRight:"crane" },
+
+  { id:"crane", name:"Crane", music:"crane", bg:BG.crane,
+    doors:[door(14), door(W-58)], nextLeft:"field", nextRight:"snake" },
+
+  { id:"snake", name:"Snake", music:"snake", bg:BG.snake,
+    doors:[door(14), door(W-58)], nextLeft:"crane", nextRight:"tiger" },
+
+  { id:"tiger", name:"Tiger", music:"tiger", bg:BG.tiger,
+    doors:[door(14), door(W-58)], nextLeft:"snake", nextRight:"templegates" },
+
+  { id:"templegates", name:"Temple Gates", music:"gates", bg:BG.templegates,
+    doors:[door(14), door(W-58)], nextLeft:"tiger", nextRight:"temple" },
+
+  // Inside temple → Hidden Room
+  { id:"temple", name:"Temple", music:"temple", bg:BG.temple,
+    doors:[door(14), door(W-58)], nextLeft:"templegates", nextRight:"hidden" },
+
+  // Hidden room: right → home, left → temple
+  { id:"hidden", name:"Hidden Room", music:"temple", bg:(BG.hidden || BG.room),
+    doors:[door(14), door(W-58)], nextLeft:"temple", nextRight:"room" },
 ];
-let levelIndex=0,inGame=false;
-const hud=document.getElementById("hud"),stageName=document.getElementById("stageName");
 
-/* ===== GAME FLOW ===== */
-function startGame(){ document.getElementById("menu").style.display="none"; cvs.style.display="block"; hud.style.display="block"; document.getElementById("controls").style.display="flex"; setLevel("room"); inGame=true; requestAnimationFrame(loop);}
-function setLevel(id){ levelIndex=LEVELS.findIndex(L=>L.id===id); const L=LEVELS[levelIndex]; stageName.textContent=L.name; playMusic(L.music); player.x=120; player.y=GROUND_Y-DRAW_H; player.vx=player.vy=0; player.state="idle"; player.tick=0; player.airJumps=0; }
+let inGame=false, levelIndex=0;
+let lives = 3;
 
-/* ===== LOOP ===== */
-function loop(){ requestAnimationFrame(loop); if(!inGame)return; update(); render(); }
-function update(){ const L=LEVELS[levelIndex]; player.vx=0; if(keys.left){player.vx=-2.6;player.facing=-1;} if(keys.right){player.vx=2.6;player.facing=1;}
-  if(keys.jump){ if(player.y>=GROUND_Y-DRAW_H){player.vy=JUMP_V;player.airJumps=1;} else if(player.airJumps>0){player.vy=JUMP_V;player.airJumps=0;} keys.jump=0; }
-  player.vy+=GRAV; player.x+=player.vx; player.y+=player.vy;
-  if(player.x<0)player.x=0; if(player.x>cvs.width-DRAW_W)player.x=cvs.width-DRAW_W;
-  let overPit=false; if(L.pit){const cx=player.x+DRAW_W/2;overPit=(cx>=L.pit.x&&cx<=L.pit.x+L.pit.w);}
-  if(!overPit&&player.y>=GROUND_Y-DRAW_H){player.y=GROUND_Y-DRAW_H;player.vy=0;player.airJumps=1;}
-  if(player.y>cvs.height+60){ setLevel(L.id); return; }
-  if(player.vy<0||player.y<GROUND_Y-DRAW_H)player.state="jump"; else if(keys.punch)player.state="punch"; else if(player.vx)player.state="walk"; else player.state="idle";
-  if(player.y>=GROUND_Y-DRAW_H-2){ for(const d of L.doors){ if(rectsOverlap(player.x,player.y,DRAW_W,DRAW_H,d.x,d.y,d.w,d.h)){ const goingRight=(player.x+DRAW_W/2)>cvs.width/2; const next=goingRight?L.nextRight:L.nextLeft; if(next){ setLevel(next); return; }}} }
+function setHearts(n){
+  heartsBox.innerHTML = "";
+  for(let i=0;i<3;i++){
+    const h = document.createElement("div");
+    h.className = "heart"+(i<n?"":" dead");
+    heartsBox.appendChild(h);
+  }
+}
+
+function startGame(){
+  // UI switches
+  document.getElementById("menu").style.display="none";
+  document.getElementById("cvs").style.display="block";
+  document.getElementById("controls").style.display="flex";
+  document.getElementById("hud").style.display="flex";
+
+  // init
+  lives = 3; setHearts(lives);
+  setLevel(0);
+  inGame = true;
+  requestAnimationFrame(loop);
+}
+
+function gameOver(){
+  stopAll();
+  tracks.gameover?.play();
+  alert("Game Over!");
+  // back to menu
+  inGame=false;
+  document.getElementById("menu").style.display="flex";
+  document.getElementById("cvs").style.display="none";
+  document.getElementById("controls").style.display="none";
+  document.getElementById("hud").style.display="none";
+}
+
+function setLevel(i){
+  levelIndex = i;
+  const L = LEVELS[levelIndex];
+  stageTag.textContent = "Stage: " + L.name;
+  playMusic(L.music);
+
+  // spawn
+  player.x = 80;
+  player.y = GROUND_Y - DRAW_H;
+  player.vx = 0; player.vy = 0; player.state = "idle"; player.tick=0; player.jumps=0;
+}
+
+function nextLevel(dir){  // dir = -1 (left) or +1 (right)
+  const L = LEVELS[levelIndex];
+  const id = dir<0 ? L.nextLeft : L.nextRight;
+  if(!id) return;
+  const idx = LEVELS.findIndex(l=>l.id===id);
+  if(idx>=0) setLevel(idx);
+}
+
+/* ================== LOOP ================== */
+let lastTime=0;
+function loop(ts){
+  requestAnimationFrame(loop);
+  if(!inGame) return;
+  const dt = Math.min(33, ts - lastTime); lastTime = ts;
+  update(dt/16.66);
+  render();
+}
+
+/* ================== UPDATE ================== */
+function update(dt){
+  const L = LEVELS[levelIndex];
+
+  // input
+  const speed = 2.8;
+  player.vx = 0;
+  if(keys.left){  player.vx = -speed; player.facing=-1; }
+  if(keys.right){ player.vx =  speed; player.facing= 1; }
+
+  // jump / double jump
+  if(keys.jump){
+    if(player._jumpLatch!==true){
+      player._jumpLatch=true;
+      const onGround = (player.y >= GROUND_Y - DRAW_H - 0.01);
+      if(onGround){ player.vy = -9.2; player.jumps=1; player.state="jump"; }
+      else if(player.jumps===1){ player.vy = -8.4; player.jumps=2; player.state="jump"; }
+    }
+  } else {
+    player._jumpLatch=false;
+  }
+
+  // physics
+  player.vy += 0.45;                 // gravity
+  player.x  += player.vx;
+  player.y  += player.vy;
+
+  // floor
+  if(player.y >= GROUND_Y - DRAW_H){
+    player.y = GROUND_Y - DRAW_H;
+    if(player.state === "jump") player.state="idle";
+    player.vy = 0; player.jumps=0;
+  }
+
+  // walls
+  player.x = Math.max(0, Math.min(W - DRAW_W, player.x));
+
+  // pit (only on levels with L.pit)
+  if(L.pit){
+    const pxCenter = player.x + DRAW_W/2;
+    if(pxCenter > L.pit.x && pxCenter < L.pit.x + L.pit.w && player.y >= GROUND_Y - DRAW_H){
+      // fall!
+      player.vy = 10;
+    }
+    // if fallen below screen -> lose life & respawn
+    if(player.y > H){
+      lives = Math.max(0, lives-1);
+      setHearts(lives);
+      if(lives===0){ gameOver(); return; }
+      setLevel(levelIndex); // respawn same level
+      return;
+    }
+  }
+
+  // state machine
+  if(keys.punch)      player.state="punch";
+  else if(player.vx)  player.state="walk";
+  else if(player.state!=="jump") player.state="idle";
+
+  // door overlap check (simple AABB)
+  for(const d of (L.doors||[])){
+    if(rectOverlap(player.x, player.y, DRAW_W, DRAW_H, d.x, d.y, d.w, d.h)){
+      // decide which side door is on
+      if(d.x < W/2) nextLevel(-1); else nextLevel(+1);
+      break;
+    }
+  }
+
   player.tick++;
 }
-function rectsOverlap(ax,ay,aw,ah,bx,by,bw,bh){return ax<bx+bw&&ax+aw>bx&&ay<by+bh&&ay+ah>by;}
-function render(){const L=LEVELS[levelIndex]; if(L.bg.complete)drawCover(L.bg,cvs.width,cvs.height); else{ctx.fillStyle="#0b1622";ctx.fillRect(0,0,cvs.width,cvs.height);} ctx.fillStyle="rgba(120,80,50,.88)";ctx.fillRect(30,GROUND_Y,cvs.width-60,18); if(L.pit){ctx.fillStyle="#081018";ctx.fillRect(L.pit.x,GROUND_Y,L.pit.w,999);} ctx.fillStyle="#7fb2a8";for(const d of L.doors){ctx.fillRect(d.x,d.y,d.w,d.h);ctx.strokeStyle="#9b6a3d";ctx.lineWidth=6;ctx.strokeRect(d.x+3,d.y+3,d.w-6,d.h-6);} if(spriteReady){const a=anims[player.state];const frame=a.frames[Math.floor(player.tick/a.speed)%a.frames.length];drawFrame(frame,Math.round(player.x),Math.round(player.y),player.facing<0);} }
-function drawFrame(f,dx,dy,flip){const PAD=2,col=f%COLS,row=(f/COLS)|0;const sx=col*FW+PAD,sy=row*FH+PAD,sw=FW-PAD*2,sh=FH-PAD*2;ctx.save();if(flip){ctx.translate(dx+DRAW_W,dy);ctx.scale(-1,1);ctx.drawImage(sprite,sx,sy,sw,sh,0,0,DRAW_W,DRAW_H);}else{ctx.drawImage(sprite,sx,sy,sw,sh,dx,dy,DRAW_W,DRAW_H);}ctx.restore();}
-addEventListener("keydown",e=>{if(e.key==="ArrowLeft"||e.key==="a")keys.left=1;if(e.key==="ArrowRight"||e.key==="d")keys.right=1;if(e.key===" "||e.key==="ArrowUp"||e.key==="w")keys.jump=1;if(e.key==="j"||e.key==="J")keys.punch=1;});
-addEventListener("keyup",e=>{if(e.key==="ArrowLeft"||e.key==="a")keys.left=0;if(e.key==="ArrowRight"||e.key==="d")keys.right=0;if(e.key===" "||e.key==="ArrowUp"||e.key==="w")keys.jump=0;if(e.key==="j"||e.key==="J")keys.punch=0;});
+
+function rectOverlap(ax,ay,aw,ah, bx,by,bw,bh){
+  return (ax < bx+bw && ax+aw > bx && ay < by+bh && ay+ah > by);
+}
+
+/* ================== RENDER ================== */
+function render(){
+  const L = LEVELS[levelIndex];
+
+  // background image scaled to cover
+  drawBg(L.bg || BG.room);
+
+  // ground (simple bar so Raiden has footing over any BG)
+  ctx.fillStyle = "#7c5537";
+  ctx.fillRect(40, GROUND_Y, W-80, 22);
+
+  // pit (visual)
+  if(L.pit){
+    ctx.fillStyle = "#21313f";
+    ctx.fillRect(L.pit.x, GROUND_Y, L.pit.w, 22);
+  }
+
+  // doors
+  ctx.fillStyle = "#92c5ba";
+  (L.doors||[]).forEach(d=>{
+    ctx.fillRect(d.x, d.y, d.w, d.h);
+    ctx.strokeStyle = "#a86e3f";
+    ctx.lineWidth = 4;
+    ctx.strokeRect(d.x, d.y, d.w, d.h);
+  });
+
+  // player
+  if(spriteReady){
+    const a = anims[player.state];
+    const frame = a.frames[Math.floor(player.tick / a.speed) % a.frames.length];
+    drawFrame(frame, Math.round(player.x), Math.round(player.y), player.facing<0);
+  }
+}
+
+function drawFrame(f, dx, dy, flip){
+  const PAD = 2;
+  const col = f % COLS, row = (f / COLS) | 0;
+  const sx = col*FW + PAD, sy = row*FH + PAD, sw = FW - PAD*2, sh = FH - PAD*2;
+
+  ctx.save();
+  if(flip){
+    ctx.translate(dx + DRAW_W, dy);
+    ctx.scale(-1, 1);
+    ctx.drawImage(sprite, sx, sy, sw, sh, 0, 0, DRAW_W, DRAW_H);
+  } else {
+    ctx.drawImage(sprite, sx, sy, sw, sh, dx, dy, DRAW_W, DRAW_H);
+  }
+  ctx.restore();
+}
+
+/* ================== INPUT ================== */
+addEventListener("keydown", e=>{
+  if(e.key==="ArrowLeft"||e.key==="a") keys.left=1;
+  if(e.key==="ArrowRight"||e.key==="d") keys.right=1;
+  if(e.key===" "||e.key==="ArrowUp"||e.key==="w") keys.jump=1;
+  if(e.key==="j"||e.key==="J") keys.punch=1;
+});
+addEventListener("keyup", e=>{
+  if(e.key==="ArrowLeft"||e.key==="a") keys.left=0;
+  if(e.key==="ArrowRight"||e.key==="d") keys.right=0;
+  if(e.key===" "||e.key==="ArrowUp"||e.key==="w") keys.jump=0;
+  if(e.key==="j"||e.key==="J") keys.punch=0;
+});
 </script>
 </body>
 </html>
