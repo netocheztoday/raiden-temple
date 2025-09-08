@@ -1,405 +1,402 @@
 <!DOCTYPE html>
 <html>
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Raiden and the Wing Chun Temple</title>
 <style>
-  :root{ --frame-max: 980px; --pad: 10px; }
+  :root{ --maxw:880px; --pad:10px; }
   html,body{margin:0;background:#000;color:#fff;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
-  #frame{max-width:var(--frame-max); margin:0 auto; padding:0 var(--pad);}
-
-  /* MENU */
+  #frame{max-width:var(--maxw);margin:0 auto;padding:0 var(--pad)}
   #menu{display:flex;flex-direction:column;align-items:center;gap:14px;padding:18px 0}
-  #menu img{max-width:100%;height:auto;border-radius:8px}
+  #menu img{width:100%;height:auto;display:block;border-radius:8px}
   .btn{background:#111;border:2px solid #fff;color:#fff;border-radius:10px;padding:12px 22px;font-size:18px}
   .btn:active{transform:translateY(1px)}
-
-  /* GAME */
   #wrap{position:relative}
   #cvs{display:none;width:100%;height:auto;background:#0b1622;image-rendering:pixelated;border-radius:12px}
-  #hud{position:absolute;left:10px;top:10px;display:none;gap:10px;align-items:center}
-  .tag{background:#0b0e12;color:#cfe1ff;padding:6px 10px;border-radius:10px;font:14px/1.2 monospace;opacity:.9}
-  /* Hearts (SVG) top-right */
-  #heartsWrap{position:absolute;right:10px;top:10px;display:none;gap:8px}
-  .heart{width:36px;height:36px}
-  .heart.off{opacity:.35;filter:grayscale(1)}
-  /* TOUCH */
-  #controls{display:none;gap:14px;justify-content:space-between;margin:10px 0}
-  .pad{flex:1;min-width:90px;height:64px;font-size:22px;border:2px solid #2e3a46;background:#111923;color:#fff;border-radius:14px}
+  #hud{position:absolute;left:10px;top:10px;display:none}
+  .chip{display:inline-block;background:rgba(0,0,0,.5);padding:6px 10px;border-radius:10px;font:14px/1.2 monospace;margin-right:8px}
+  #hearts{position:absolute;right:10px;top:10px;display:none;gap:6px}
+  .heart{width:28px;height:28px;filter:drop-shadow(0 0 4px #f7d35a)}
+  #controls{display:none;gap:12px;justify-content:space-between;margin:12px 0}
+  .pad{flex:1;min-width:90px;height:70px;font-size:22px;border:2px solid #2b3542;background:#121922;color:#fff;border-radius:16px}
   .pad:active{filter:brightness(1.2)}
-  /* EFFECTS + OVERLAYS */
-  #flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .18s}
-  #overlay{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.5)}
-  #overlay .box{background:#0b0e12; border:2px solid #fff; border-radius:12px; padding:22px 20px; text-align:center; width:min(90%,420px)}
-  #overlay h2{margin:0 0 10px}
-  #overlay p{margin:0 0 14px;opacity:.9}
-  #overlay .btn{margin:0 8px}
+  #fade{position:absolute;inset:0;background:#000;opacity:0;pointer-events:none;transition:opacity .35s}
+  /* Game Over overlay */
+  #over{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.75)}
+  #over .card{background:#0c1118;border:2px solid #fff;border-radius:12px;padding:18px;min-width:260px;text-align:center}
+  #over h2{margin:.2rem 0 1rem}
+  #tag{position:absolute;left:10px;top:44px;background:#0b0e12;color:#cfe1ff;padding:4px 8px;border-radius:10px;font:12px/1.2 monospace;opacity:.85;display:none}
 </style>
 </head>
 <body>
-  <div id="frame">
-    <!-- MENU -->
-    <div id="menu">
-      <img src="menu-title.png" alt="Raiden and the Wing Chun Temple" />
-      <button class="btn" onclick="startGame()">Play</button>
-      <button class="btn" id="musicBtn" onclick="toggleMusic()">Music: On</button>
-      <button class="btn" onclick="alert('Credits\nMusic & Art: You\nCode helper: ChatGPT')">Credits</button>
+<div id="frame">
+
+  <!-- MENU -->
+  <div id="menu">
+    <img src="menu-title.png" alt="Raiden and the Wing Chun Temple">
+    <button class="btn" onclick="startGame()">Play</button>
+    <button class="btn" id="musicBtn" onclick="toggleMusic()">Music: On</button>
+    <button class="btn" onclick="alert('Credits\\nMusic & Art: You\\nCode helper: ChatGPT')">Credits</button>
+  </div>
+
+  <!-- GAME -->
+  <div id="wrap">
+    <canvas id="cvs" width="640" height="360"></canvas>
+    <div id="hud">
+      <span class="chip" id="stageChip">Stage: —</span>
+      <span class="chip" id="spriteChip">sprite: …</span>
     </div>
+    <div id="hearts"></div>
+    <div id="tag"></div>
+    <div id="fade"></div>
 
-    <!-- GAME -->
-    <div id="wrap">
-      <canvas id="cvs" width="800" height="450"></canvas>
-
-      <!-- HUD -->
-      <div id="hud">
-        <div id="stageTag" class="tag">Stage: —</div>
-        <div id="spriteTag" class="tag">sprite: …</div>
-      </div>
-      <div id="heartsWrap" aria-label="lives"></div>
-
-      <!-- Effects + Game Over -->
-      <div id="flash"></div>
-      <div id="overlay">
-        <div class="box">
-          <h2>Game Over</h2>
-          <p>You ran out of lives.</p>
-          <button class="btn" onclick="retryLevel()">Retry</button>
-          <button class="btn" onclick="backToMenu()">Menu</button>
+    <!-- Game Over -->
+    <div id="over">
+      <div class="card">
+        <h2>Game Over!</h2>
+        <div style="display:flex;gap:10px;justify-content:center">
+          <button class="btn" onclick="retry()">Retry</button>
+          <button class="btn" onclick="toMenu()">Menu</button>
         </div>
       </div>
     </div>
-
-    <!-- Touch controls -->
-    <div id="controls">
-      <button class="pad" ontouchstart="keys.left=1"  ontouchend="keys.left=0">◀</button>
-      <button class="pad" ontouchstart="keys.right=1" ontouchend="keys.right=0">▶</button>
-      <button class="pad" ontouchstart="keys.punch=1" ontouchend="keys.punch=0">J</button>
-      <button class="pad" ontouchstart="keys.jump=1"  ontouchend="keys.jump=0">⎵</button>
-    </div>
   </div>
 
+  <!-- TOUCH CONTROLS -->
+  <div id="controls">
+    <button class="pad" ontouchstart="keys.left=1"  ontouchend="keys.left=0">◀</button>
+    <button class="pad" ontouchstart="keys.right=1" ontouchend="keys.right=0">▶</button>
+    <button class="pad" ontouchstart="keys.punch=1" ontouchend="keys.punch=0">J</button>
+    <button class="pad" ontouchstart="keys.jump=1"  ontouchend="keys.jump=0">↑</button>
+  </div>
+
+</div>
+
 <script>
-/* ============== AUDIO ============== */
+/* =================== AUDIO =================== */
 let musicOn = true, currentMusic = "menu";
 const tracks = {};
-["menu","crane","snake","tiger","gates","temple","victory","gameover","credits","lose"].forEach(n=>{
+const trackNames = ["menu","field","snake","tiger","gates","temple","victory","credits","lose"];
+trackNames.forEach(n=>{
   const a = new Audio(n+".mp3");
-  a.loop = !["victory","gameover","lose"].includes(n);
-  tracks[n] = a;
+  a.loop = !(n==="victory"||n==="credits"||n==="lose");
+  tracks[n]=a;
 });
 function stopAll(){ for(const a of Object.values(tracks)){ a.pause(); a.currentTime=0; } }
-function playMusic(name){ if(!musicOn) return; stopAll(); currentMusic=name; tracks[name]?.play().catch(()=>{}); }
+function playMusic(name){ currentMusic=name; if(musicOn) { stopAll(); tracks[name]?.play().catch(()=>{}); } }
+function playSfx(name){ tracks[name]?.play().catch(()=>{}); }
 function toggleMusic(){
   musicOn = !musicOn;
   document.getElementById("musicBtn").textContent = "Music: " + (musicOn?"On":"Off");
   if(musicOn) playMusic(currentMusic); else stopAll();
 }
 
-/* ============== CANVAS ============== */
+/* =================== CANVAS =================== */
 const cvs = document.getElementById("cvs");
-const ctx = cvs.getContext("2d", { alpha:true });
+const ctx = cvs.getContext("2d", {alpha:true});
 ctx.imageSmoothingEnabled = false;
-const W = cvs.width, H = cvs.height;
-const GROUND_Y = H - 70;
 
-/* ============== UI refs ============== */
-const stageTag = document.getElementById("stageTag");
-const spriteTag = document.getElementById("spriteTag");
-const heartsWrap = document.getElementById("heartsWrap");
-const flashEl   = document.getElementById("flash");
-const overlayEl = document.getElementById("overlay");
-
-/* ============== IMAGES ============== */
-function loadImg(src){ const i=new Image(); i.src = src+"?v="+Date.now(); return i; }
-const BG = {
-  room:        loadImg("bg-room.png"),
-  field:       loadImg("bg-field.png"),
-  crane:       loadImg("bg-crane.png"),
-  snake:       loadImg("bg-snake.png"),
-  tiger:       loadImg("bg-tiger.png"),
-  templegates: loadImg("bg-templegates.png"),
-  temple:      loadImg("bg-temple.png"),
-  hidden:      loadImg("bg-hidden.png") // optional
-};
-function drawBg(img){
-  if(!img || !img.complete) return;
-  const iw = img.naturalWidth, ih = img.naturalHeight;
-  const s = Math.max(W/iw, H/ih);
-  const dw = Math.floor(iw*s), dh = Math.floor(ih*s);
-  const dx = Math.floor((W-dw)/2), dy = Math.floor((H-dh)/2);
-  ctx.drawImage(img, dx, dy, dw, dh);
-}
-
-/* ============== SPRITE ============== */
+/* =================== SPRITE =================== */
+const spriteChip = document.getElementById("spriteChip");
 let spriteReady=false, FW=0, FH=0, COLS=3, ROWS=3;
 const sprite = new Image();
 sprite.src = "raiden-sprites.png?v="+Date.now();
-sprite.onload = ()=>{ FW=Math.floor(sprite.naturalWidth/COLS); FH=Math.floor(sprite.naturalHeight/ROWS); spriteReady=true; spriteTag.textContent="sprite: ok"; };
-sprite.onerror = ()=>{ spriteTag.textContent="sprite: missing"; };
+sprite.onload = ()=>{
+  FW = Math.floor(sprite.naturalWidth/COLS);
+  FH = Math.floor(sprite.naturalHeight/ROWS);
+  spriteReady = true;
+  spriteChip.textContent = "sprite: ok";
+};
+sprite.onerror = ()=>{ spriteChip.textContent = "sprite: missing"; };
 
-/* ============== PLAYER ============== */
-let DRAW_W=64, DRAW_H=96;
-const player = { x:80, y:GROUND_Y-DRAW_H, vx:0, vy:0, facing:1, state:"idle", tick:0, jumps:0 };
+/* =================== LEVELS =================== */
+/* Standard door rectangles live at left/right edges.
+   We set `portals.left/right` to the target id, or `null` to hide. */
+const LEVELS = [
+  { id:"room",   name:"Room",   music:"menu",  bg:"bg-room.png",
+    portals:{left:null, right:"field"}, pit:null },
 
-/* Animations */
+  { id:"field",  name:"Field",  music:"field", bg:"bg-field.png",
+    portals:{left:"room", right:"crane"},
+    pit:{ x: (cvs.width/2 - 70)|0, w: 140 } },  // wider pit
+
+  { id:"crane",  name:"Crane",  music:"snake", bg:"bg-crane.png",
+    portals:{left:"field", right:"snake"}, pit:null },
+
+  { id:"snake",  name:"Snake",  music:"snake", bg:"bg-snake.png",
+    portals:{left:"crane", right:"tiger"}, pit:null },
+
+  { id:"tiger",  name:"Tiger",  music:"tiger", bg:"bg-tiger.png",
+    portals:{left:"snake", right:"gates"}, pit:null },
+
+  { id:"gates",  name:"Temple Gates", music:"gates", bg:"bg-gates.png",
+    portals:{left:"tiger", right:"temple"}, pit:null },
+
+  { id:"temple", name:"Temple", music:"temple", bg:"bg-temple.png",
+    portals:{left:"gates", right:"hidden"}, pit:null },   // FIXED: Temple → Hidden
+
+  { id:"hidden", name:"Hidden Room", music:"temple", bg:"bg-temple-room.png",
+    portals:{left:"temple", right:"room"}, pit:null }     // FIXED: Hidden → Room
+];
+
+// background cache
+const bgCache = new Map();
+function getBG(src){
+  if(bgCache.has(src)) return bgCache.get(src);
+  const im = new Image(); im.src = src+"?v="+Date.now();
+  bgCache.set(src, im);
+  return im;
+}
+
+/* =================== PLAYER =================== */
+const GROUND_Y = 300;
+const DRAW_W = 54, DRAW_H = 81;
+const SPEED = 2.4;
+const JUMP = 8.4;
+const GRAV = 0.5;
+let canDouble = true;
+
+const player = {
+  x:(cvs.width-DRAW_W)/2, y:GROUND_Y-DRAW_H,
+  vx:0, vy:0, facing:1, state:"idle", tick:0,
+  enteringFrom:null  // 'left' or 'right' or null
+};
+const keys = { left:0,right:0,jump:0,punch:0 };
 const anims = {
   idle:{frames:[0,1,2],speed:12},
   walk:{frames:[3,4,5],speed:8},
   punch:{frames:[6,7],speed:6},
   jump:{frames:[8],speed:12}
 };
-const keys = { left:0, right:0, jump:0, punch:0 };
 
-/* ============== LEVELS ============== */
-function door(x){ return {x, y:GROUND_Y-120, w:44, h:120}; }
+/* =================== FLOW / UI =================== */
+const stageChip = document.getElementById("stageChip");
+const heartsUI = document.getElementById("hearts");
+const hud = document.getElementById("hud");
+const fade = document.getElementById("fade");
+const over = document.getElementById("over");
 
-const LEVELS = [
-  { id:"room", name:"Room", music:"menu", bg:BG.room,
-    doors:[door(W-58)], nextLeft:null, nextRight:"field" },
+let inGame=false, levelIndex=0, lives=3, pendingReset=false;
+let currentBG = null;
 
-  { id:"field", name:"Field", music:"crane", bg:BG.field,
-    doors:[door(14), door(W-58)], pit:{x:Math.floor(W/2)-60, w:120},
-    nextLeft:"room", nextRight:"crane" },
-
-  { id:"crane", name:"Crane", music:"crane", bg:BG.crane,
-    doors:[door(14), door(W-58)], nextLeft:"field", nextRight:"snake" },
-
-  { id:"snake", name:"Snake", music:"snake", bg:BG.snake,
-    doors:[door(14), door(W-58)], nextLeft:"crane", nextRight:"tiger" },
-
-  { id:"tiger", name:"Tiger", music:"tiger", bg:BG.tiger,
-    doors:[door(14), door(W-58)], nextLeft:"snake", nextRight:"templegates" },
-
-  { id:"templegates", name:"Temple Gates", music:"gates", bg:BG.templegates,
-    doors:[door(14), door(W-58)], nextLeft:"tiger", nextRight:"temple" },
-
-  { id:"temple", name:"Temple", music:"temple", bg:BG.temple,
-    doors:[door(14), door(W-58)], nextLeft:"templegates", nextRight:"hidden" },
-
-  { id:"hidden", name:"Hidden Room", music:"temple", bg:(BG.hidden && BG.hidden.complete?BG.hidden:BG.room),
-    doors:[door(14), door(W-58)], nextLeft:"temple", nextRight:"room" },
-];
-
-let inGame=false, levelIndex=0, lives=3, paused=false;
-let entryDir = 0;          // -1 came from right door, +1 came from left door
-let doorCooldown = 0;      // frames after spawn to ignore door collisions
-
-/* Hearts (SVG) */
-const heartSVG = `<svg viewBox="0 0 64 64" class="heart" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#FFE88A"/><stop offset="1" stop-color="#FFA800"/>
-    </linearGradient>
-  </defs>
-  <path d="M32 56s-4-3-13-10C8 39 4 34 4 26c0-6 5-12 12-12 6 0 10 4 12 7 2-3 6-7 12-7 7 0 12 6 12 12 0 8-4 13-15 20-9 7-13 10-13 10z" fill="url(#g)" stroke="#5a2d00" stroke-width="3"/>
-  <circle cx="24" cy="18" r="6" fill="#fff" opacity=".6"/>
-</svg>`;
-
-function renderHearts(n){
-  let html="";
-  for(let i=1;i<=3;i++){
-    html+= heartSVG.replace('class="heart"','class="heart'+(i<=n?'':' off')+'"');
-  }
-  heartsWrap.innerHTML = html;
-}
-
-/* FLOW */
 function startGame(){
   document.getElementById("menu").style.display="none";
-  document.getElementById("cvs").style.display="block";
+  cvs.style.display="block";
   document.getElementById("controls").style.display="flex";
-  document.getElementById("hud").style.display="flex";
-  heartsWrap.style.display="flex";
-  lives=3; renderHearts(lives);
-  setLevel(0, +1); // entering Room from left (spawn near right door off)
-  inGame=true; paused=false;
+  hud.style.display="block";
+  heartsUI.style.display="flex";
+  inGame=true;
+  lives=3; drawHearts();
+  setLevelById("room", null);
   requestAnimationFrame(loop);
 }
 
-function setLevel(i, cameFromDir=0){
-  levelIndex=i;
-  entryDir = cameFromDir; // -1 entered via right door, +1 via left door
-  doorCooldown = 18;      // ~0.3s at 60fps
-  const L=LEVELS[levelIndex];
-  stageTag.textContent = "Stage: " + L.name;
-  playMusic(L.music);
-  // spawn away from the door we came from
-  if(entryDir<0){ // came from right side -> spawn near left quarter
-    player.x = 120;
-  }else if(entryDir>0){ // came from left side -> spawn near right quarter
-    player.x = W - 120 - DRAW_W;
-  }else{
-    player.x = 80;
-  }
-  player.y=GROUND_Y-DRAW_H; player.vx=0; player.vy=0; player.state="idle"; player.tick=0; player.jumps=0;
-}
-
-function retryLevel(){
-  lives=3; renderHearts(lives);
-  overlayEl.style.display="none"; paused=false;
-  setLevel(levelIndex, 0);
-}
-function backToMenu(){
-  overlayEl.style.display="none"; paused=false;
+function toMenu(){
   stopAll();
-  document.getElementById("menu").style.display="flex";
-  document.getElementById("cvs").style.display="none";
-  document.getElementById("controls").style.display="none";
-  document.getElementById("hud").style.display="none";
-  heartsWrap.style.display="none";
   inGame=false;
+  over.style.display="none";
+  cvs.style.display="none";
+  hud.style.display="none";
+  heartsUI.style.display="none";
+  document.getElementById("controls").style.display="none";
+  document.getElementById("menu").style.display="flex";
+  playMusic("menu");
 }
 
-function nextLevel(dir){
-  const L=LEVELS[levelIndex];
-  const id = dir<0 ? L.nextLeft : L.nextRight;
-  if(!id) return;
+function retry(){
+  over.style.display="none";
+  lives=3; drawHearts();
+  setLevel(levelIndex, null);
+}
+
+function setLevelById(id, entrySide){
   const idx = LEVELS.findIndex(l=>l.id===id);
-  if(idx>=0) setLevel(idx, dir); // pass which side we exited
+  setLevel(idx, entrySide);
 }
 
-function flash(color="#fff", dur=180){
-  flashEl.style.background = color;
-  flashEl.style.opacity = 0.9;
-  setTimeout(()=>{ flashEl.style.opacity = 0; }, dur);
+function setLevel(idx, entrySide){
+  levelIndex = Math.max(0, Math.min(LEVELS.length-1, idx));
+  const L = LEVELS[levelIndex];
+  stageChip.textContent = "Stage: " + L.name;
+  playMusic(L.music);
+  currentBG = getBG(L.bg);
+
+  // Spawn logic: put player near the *entry opposite* side.
+  if(entrySide==="left"){
+    player.x = 20; player.facing = 1;
+  }else if(entrySide==="right"){
+    player.x = cvs.width - DRAW_W - 20; player.facing = -1;
+  }else{
+    player.x = (cvs.width - DRAW_W)/2; player.facing = 1;
+  }
+  player.y = GROUND_Y - DRAW_H;
+  player.vx = 0; player.vy = 0;
+  player.state="idle"; player.tick=0;
+  player.enteringFrom = entrySide || null;
+  canDouble = true;
 }
 
-/* LOOP */
-let last=0;
-function loop(t){
+/* =================== HEARTS =================== */
+function drawHearts(){
+  heartsUI.innerHTML = "";
+  for(let i=0;i<3;i++){
+    const img = document.createElement("img");
+    img.className="heart";
+    img.alt = i<lives ? "♥" : "♡";
+    // simple pixel-heart using data URL to avoid extra file; gold-ish
+    img.src = i<lives
+      ? "data:image/svg+xml;utf8,"+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"><path fill="#ffd54a" d="M14 24l-9-9c-3-3 1-9 5-6l4 3 4-3c4-3 8 3 5 6l-9 9z"/></svg>')
+      : "data:image/svg+xml;utf8,"+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"><path fill="none" stroke="#ffd54a" stroke-width="2" d="M14 24l-9-9c-3-3 1-9 5-6l4 3 4-3c4-3 8 3 5 6l-9 9z"/></svg>');
+    heartsUI.appendChild(img);
+  }
+}
+
+/* =================== LOOP =================== */
+function loop(){
   requestAnimationFrame(loop);
-  if(!inGame || paused) return;
-  const dt = Math.min(33, t-last); last=t;
-  update(dt/16.66);
+  if(!inGame) return;
+  update();
   render();
 }
 
-/* HELPERS */
-function rectOverlap(ax,ay,aw,ah, bx,by,bw,bh){
-  return (ax < bx+bw && ax+aw > bx && ay < by+bh && ay+ah > by);
-}
-
-/* UPDATE */
 function update(){
   const L = LEVELS[levelIndex];
 
-  // input
-  const speed = 2.8;
-  player.vx=0;
-  if(keys.left){  player.vx=-speed; player.facing=-1; }
-  if(keys.right){ player.vx= speed; player.facing= 1; }
+  // movement
+  player.vx = 0;
+  if(keys.left)  { player.vx = -SPEED; player.facing=-1; }
+  if(keys.right) { player.vx =  SPEED; player.facing= 1; }
 
-  // jump / double-jump (edge on)
+  // jump / double
   if(keys.jump){
-    if(!player._jl){
-      player._jl=true;
-      const onGround = (player.y >= GROUND_Y - DRAW_H - 0.01);
-      if(onGround){ player.vy=-9.2; player.jumps=1; player.state="jump"; }
-      else if(player.jumps===1){ player.vy=-8.4; player.jumps=2; player.state="jump"; }
+    if(player.y >= GROUND_Y - DRAW_H){
+      player.vy = -JUMP; canDouble = true;
+    }else if(canDouble){
+      player.vy = -JUMP*0.9; canDouble = false;
     }
-  } else player._jl=false;
+    keys.jump = 0; // tap to trigger (space/btn can be held repeatedly)
+  }
 
-  // physics
-  player.vy += 0.45;
+  player.vy += GRAV;
   player.x  += player.vx;
   player.y  += player.vy;
 
-  // bounds
-  player.x = Math.max(0, Math.min(W-DRAW_W, player.x));
-
-  // PIT: no ground collision while over it
-  const center = player.x + DRAW_W/2;
-  const overPit = L.pit && center > L.pit.x && center < (L.pit.x + L.pit.w);
-
-  // floor collision
-  if(!overPit && player.y >= GROUND_Y - DRAW_H){
+  // floor
+  if(player.y >= GROUND_Y - DRAW_H){
     player.y = GROUND_Y - DRAW_H;
-    if(player.state==="jump") player.state="idle";
-    player.vy=0; player.jumps=0;
+    player.vy = 0;
   }
 
-  // fell -> life loss / game over
-  if(player.y > H + 10){
-    lives = Math.max(0, lives-1);
-    renderHearts(lives);
-    tracks.lose?.play().catch(()=>{});
-    flash("#fff", 160);
-    if(lives === 0){
-      stopAll(); tracks.gameover?.play().catch(()=>{});
-      overlayEl.style.display="flex";
-      paused = true;
-      return;
-    } else {
-      setLevel(levelIndex, 0);
-      return;
-    }
-  }
+  // bounds (keep within canvas horizontally)
+  player.x = Math.max(0, Math.min(cvs.width - DRAW_W, player.x));
 
   // state
-  if(keys.punch)      player.state="punch";
+  if(player.vy < 0 || player.vy > 0.2) player.state="jump";
+  else if(keys.punch) player.state="punch";
   else if(player.vx)  player.state="walk";
-  else if(player.state!=="jump") player.state="idle";
+  else player.state="idle";
+  player.tick++;
 
-  // door overlap (after spawn cooldown)
-  if(doorCooldown>0) doorCooldown--;
-  else {
-    for(const d of (L.doors||[])){
-      if(rectOverlap(player.x,player.y,DRAW_W,DRAW_H, d.x,d.y,d.w,d.h)){
-        if(d.x < W/2) nextLevel(-1); else nextLevel(+1);
-        break;
+  // doors
+  const leftDoor = {x:10,y:GROUND_Y-120,w:22,h:110};
+  const rightDoor= {x:cvs.width-32,y:GROUND_Y-120,w:22,h:110};
+
+  function touching(a){ return player.x+DRAW_W> a.x && player.x < a.x+a.w && player.y+DRAW_H> a.y; }
+
+  if(L.portals.left && touching(leftDoor) && player.vx<0){
+    fadeTo(()=> setLevelById(L.portals.left, "right"));
+  }
+  if(L.portals.right && touching(rightDoor) && player.vx>0){
+    fadeTo(()=> setLevelById(L.portals.right, "left"));
+  }
+
+  // pit (only some levels)
+  if(L.pit){
+    const pxCenter = player.x + DRAW_W/2;
+    const inPit = (pxCenter >= L.pit.x && pxCenter <= L.pit.x + L.pit.w);
+    if(inPit && player.y >= GROUND_Y - DRAW_H){
+      // start falling
+      player.vy = 3.5;
+    }
+    // lost?
+    if(player.y > cvs.height + 40 && !pendingReset){
+      pendingReset = true;
+      lives--;
+      drawHearts();
+      playSfx("lose");  // **lose sound**
+      if(lives <= 0){
+        // Game Over
+        setTimeout(()=>{ over.style.display="flex"; pendingReset=false; }, 300);
+      }else{
+        // respawn at last entry side
+        setTimeout(()=>{
+          setLevel(levelIndex, player.enteringFrom);
+          pendingReset=false;
+        }, 300);
       }
     }
   }
-
-  player.tick++;
 }
 
-/* RENDER */
 function render(){
   const L = LEVELS[levelIndex];
 
-  // BG
-  drawBg(L.bg || BG.room);
+  // background + ground
+  if(currentBG && currentBG.complete){
+    // scale to fit canvas exactly
+    ctx.drawImage(currentBG, 0, 0, currentBG.naturalWidth||currentBG.width, currentBG.naturalHeight||currentBG.height, 0, 0, cvs.width, cvs.height);
+  }else{
+    ctx.fillStyle="#0e2230"; ctx.fillRect(0,0,cvs.width,cvs.height);
+  }
 
-  // ground
-  ctx.fillStyle="#7c5537";
-  ctx.fillRect(40, GROUND_Y, W-80, 22);
+  // ground band
+  ctx.fillStyle = "#8a5a32";
+  ctx.fillRect(20, GROUND_Y, cvs.width-40, 22);
 
-  // pit visual
-  if(L.pit){ ctx.fillStyle="#21313f"; ctx.fillRect(L.pit.x, GROUND_Y, L.pit.w, 22); }
+  // pit visual (if any)
+  if(L.pit){
+    ctx.fillStyle="#1a0f0f";
+    ctx.fillRect(L.pit.x, GROUND_Y, L.pit.w, 24);
+  }
 
   // doors
-  ctx.fillStyle="#92c5ba";
-  (L.doors||[]).forEach(d=>{
-    ctx.fillRect(d.x, d.y, d.w, d.h);
-    ctx.strokeStyle="#a86e3f"; ctx.lineWidth=4; ctx.strokeRect(d.x, d.y, d.w, d.h);
-  });
-
-  // stage label
-  ctx.fillStyle="rgba(11,14,18,.85)";
-  ctx.fillRect(18, 14, 160, 34);
-  ctx.fillStyle="#cfe1ff";
-  ctx.font="16px monospace";
-  ctx.fillText("Stage: " + L.name, 26, 36);
+  ctx.fillStyle = "rgba(180,220,215,.9)";
+  if(L.portals.left){  ctx.fillRect(10, GROUND_Y-120, 22, 110); }
+  if(L.portals.right){ ctx.fillRect(cvs.width-32, GROUND_Y-120, 22, 110); }
 
   // player
   if(spriteReady){
-    const a=anims[player.state], f=a.frames[Math.floor(player.tick/a.speed)%a.frames.length];
-    drawFrame(f, Math.round(player.x), Math.round(player.y), player.facing<0);
+    const a = anims[player.state];
+    const frame = a.frames[Math.floor(player.tick/a.speed)%a.frames.length];
+    drawFrame(frame, Math.round(player.x), Math.round(player.y), player.facing<0);
   }
 }
 
 function drawFrame(f, dx, dy, flip){
-  const PAD=2, col=f%COLS, row=(f/COLS|0);
+  const PAD=2, col=f%COLS, row=(f/COLS)|0;
   const sx=col*FW+PAD, sy=row*FH+PAD, sw=FW-PAD*2, sh=FH-PAD*2;
   ctx.save();
-  if(flip){ ctx.translate(dx+DRAW_W,dy); ctx.scale(-1,1); ctx.drawImage(sprite,sx,sy,sw,sh,0,0,DRAW_W,DRAW_H); }
-  else    { ctx.drawImage(sprite,sx,sy,sw,sh,dx,dy,DRAW_W,DRAW_H); }
+  if(flip){
+    ctx.translate(dx+DRAW_W,dy);
+    ctx.scale(-1,1);
+    ctx.drawImage(sprite, sx,sy,sw,sh, 0,0, DRAW_W,DRAW_H);
+  }else{
+    ctx.drawImage(sprite, sx,sy,sw,sh, dx,dy, DRAW_W,DRAW_H);
+  }
   ctx.restore();
 }
 
-/* INPUT */
+/* =================== EFFECTS =================== */
+function fadeTo(fn){
+  fade.style.opacity = "1";
+  setTimeout(()=>{
+    fn();
+    fade.style.opacity = "0";
+  }, 250);
+}
+
+/* =================== INPUT =================== */
 addEventListener("keydown", e=>{
   if(e.key==="ArrowLeft"||e.key==="a") keys.left=1;
   if(e.key==="ArrowRight"||e.key==="d") keys.right=1;
@@ -412,6 +409,24 @@ addEventListener("keyup", e=>{
   if(e.key===" "||e.key==="ArrowUp"||e.key==="w") keys.jump=0;
   if(e.key==="j"||e.key==="J") keys.punch=0;
 });
+
+/* =================== START HELPERS =================== */
+function ensureFirstGestureAudio(){
+  // On first touch/key we can safely try to resume context; here we just try play briefly.
+  const onFirst = ()=>{
+    if(musicOn && currentMusic) tracks[currentMusic]?.play().catch(()=>{});
+    removeEventListener("pointerdown",onFirst); removeEventListener("keydown",onFirst);
+  };
+  addEventListener("pointerdown",onFirst,{once:true});
+  addEventListener("keydown",onFirst,{once:true});
+}
+ensureFirstGestureAudio();
+
+/* Expose for overlay buttons */
+window.retry = retry;
+window.toMenu = toMenu;
+window.startGame = startGame;
+window.toggleMusic = toggleMusic;
 </script>
 </body>
 </html>
