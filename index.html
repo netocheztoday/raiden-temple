@@ -6,27 +6,32 @@
 <title>Raiden and the Wing Chun Temple</title>
 <style>
   :root{ --frame-max: 980px; --pad: 12px; }
-  html,body{ margin:0; background:#000; color:#fff; font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif; }
-  #frame{ max-width:var(--frame-max); margin:0 auto; padding:0 var(--pad); }
-  #menu{ display:flex; flex-direction:column; align-items:center; gap:14px; padding:18px 0; }
-  #menu img{ width:100%; height:auto; display:block; border-radius:6px; }
-  .btn{ background:#111; border:2px solid #fff; color:#fff; border-radius:8px; padding:12px 22px; font-size:18px }
-  .btn:active{ transform:translateY(1px) }
+  html,body{ margin:0; background:#000; color:#fff; font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;}
+  #frame{ max-width:var(--frame-max); margin:0 auto; padding:0 var(--pad);}
+  #menu{ display:flex; flex-direction:column; align-items:center; gap:14px; padding:18px 0;}
+  #menu img{ width:100%; height:auto; display:block; border-radius:6px;}
+  .btn{ background:#111; border:2px solid #fff; color:#fff; border-radius:8px; padding:12px 22px; font-size:18px;}
+  .btn:active{ transform:translateY(1px);}
 
-  /* Landscape game */
-  #wrap{ position:relative }
-  #cvs{ display:none; width:100%; height:auto; background:#0b1622; image-rendering:pixelated; border-radius:12px }
-
+  /* Game */
+  #wrap{ position:relative;}
+  #cvs{ display:none; width:100%; height:auto; background:#0b1622; image-rendering:pixelated; border-radius:12px;}
   #hud{ position:absolute; left:12px; top:12px; background:rgba(0,0,0,.55); padding:6px 10px; border-radius:8px;
-        font-family:monospace; font-size:14px; display:none }
+        font-family:monospace; font-size:14px; display:none;}
   #tag{ position:absolute; left:12px; top:12px; transform:translateY(28px); background:#0b0e12; color:#cfe1ff;
-        padding:4px 8px; border-radius:10px; font:12px/1.2 monospace; opacity:.85; display:none }
+        padding:4px 8px; border-radius:10px; font:12px/1.2 monospace; opacity:.85; display:none;}
+  #hearts{ position:absolute; right:12px; top:12px; font-size:18px; display:none; text-shadow:0 2px 0 #0008;}
+  /* Overlay */
+  #overlay{ position:absolute; inset:0; display:none; align-items:center; justify-content:center; }
+  #overlay .box{ background:#0b0e12dd; border:2px solid #fff; border-radius:10px; padding:24px; text-align:center; }
+  #overlay .box h2{ margin:0 0 14px; }
+  #overlay .box .btn{ margin:6px 8px 0; }
 
-  /* Touch controls under a landscape canvas */
-  #controls{ display:none; gap:10px; justify-content:space-between; margin:10px 0 }
+  /* Touch controls */
+  #controls{ display:none; gap:10px; justify-content:space-between; margin:10px 0;}
   .pad{ flex:1; min-width:90px; height:64px; font-size:22px; border:2px solid #303a46;
-        background:#141c26; color:#fff; border-radius:12px }
-  .pad:active{ filter:brightness(1.2) }
+        background:#141c26; color:#fff; border-radius:12px;}
+  .pad:active{ filter:brightness(1.2);}
 </style>
 </head>
 <body>
@@ -41,17 +46,28 @@
 
     <!-- GAME -->
     <div id="wrap">
-      <!-- Landscape canvas (wider than tall) -->
       <canvas id="cvs" width="800" height="450"></canvas>
       <div id="hud">Stage: <span id="stageName">—</span></div>
+      <div id="hearts"></div>
       <div id="tag"></div>
+
+      <div id="overlay">
+        <div class="box">
+          <h2 id="ovTitle">Game Over</h2>
+          <p id="ovMsg">You fell into the ditch!</p>
+          <div>
+            <button class="btn" onclick="retryLevel()">Retry</button>
+            <button class="btn" onclick="backToMenu()">Menu</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div id="controls">
       <button class="pad" ontouchstart="keys.left=1"  ontouchend="keys.left=0">◀</button>
       <button class="pad" ontouchstart="keys.right=1" ontouchend="keys.right=0">▶</button>
-      <button class="pad" ontouchstart="tapPunch(1)"    ontouchend="tapPunch(0)">J</button>
-      <button class="pad" ontouchstart="tapJump(1)"     ontouchend="tapJump(0)">↑</button>
+      <button class="pad" ontouchstart="tapPunch(1)"  ontouchend="tapPunch(0)">J</button>
+      <button class="pad" ontouchstart="tapJump(1)"   ontouchend="tapJump(0)">↑</button>
     </div>
   </div>
 
@@ -82,46 +98,49 @@ const tag = document.getElementById("tag");
 let spriteReady=false, FW=0, FH=0, COLS=3, ROWS=3;
 const sprite = new Image();
 sprite.src = "raiden-sprites.png?v="+Date.now();
-sprite.onload = ()=>{
-  FW = Math.floor(sprite.naturalWidth / COLS);
-  FH = Math.floor(sprite.naturalHeight / ROWS);
-  spriteReady = true;
-  tag.style.display = "block";
-  tag.textContent = "sprite: ok";
-};
+sprite.onload = ()=>{ FW=Math.floor(sprite.naturalWidth/COLS); FH=Math.floor(sprite.naturalHeight/ROWS);
+  spriteReady=true; tag.style.display="block"; tag.textContent="sprite: ok"; };
 sprite.onerror = ()=>{ tag.style.display="block"; tag.textContent="sprite: missing"; };
 
-/* ======= LEVELS (with background images + doors) ======= */
+/* ======= BACKGROUNDS ======= */
 const roomBG  = new Image(); roomBG.src  = 'bg-room.png';
 const fieldBG = new Image(); fieldBG.src = 'bg-field.png';
 
+/* ======= LEVELS ======= */
 const LEVELS = [
-  { id:'room',  name:"Raiden’s Room", music:'menu',  bg:roomBG,  ground:'#6e594b',
-    doors:[ {x:700, w:54, h:120, target:'field', label:'→'} ] },
+  // 0
+  { id:'room',  name:"Raiden’s Room", music:'menu', bg:roomBG,  ground:'#2b3542',
+    doors:[ {x:700, w:54, h:120, target:'field', label:'→'} ],
+    pit:null },
 
-  { id:'field', name:"Outside: Choose a Path", music:'crane',  bg:fieldBG, ground:'#8a5a32',
+  // 1 (with ditch)
+  { id:'field', name:"Outside: Choose a Path", music:'crane', bg:fieldBG, ground:'#8a5a32',
     doors:[
       {x:40,  w:50, h:118, target:'room',  label:'⟵'},
-      {x:710, w:50, h:118, target:'crane', label:'⟶'}
-    ] },
+      {x:715, w:50, h:118, target:'crane', label:'⟶'}
+    ],
+    pit:{ x: (800-180)/2, w:180 }   // center gap; tune width here
+  },
 
+  // 2
   { id:'crane', name:"Crane: Balance", music:'crane',
     bg:null, bgTop:"#0e2230", bgMid:"#132a3a", bgBot:"#0b1b27", ground:"#8a5a32",
-    doors:[] },
+    doors:[], pit:null },
 ];
 
-/* ======= PLAYER ======= */
-const hud = document.getElementById("hud");
-const stageName = document.getElementById("stageName");
-const GROUND_Y = cvs.height - 90;   // floor inside the 450px canvas
-let DRAW_W = 54, DRAW_H = 81;
+function levelById(id){ return LEVELS.findIndex(L=>L.id===id); }
 
-const player = {
-  x:(cvs.width-DRAW_W)/2 - 140,
-  y:GROUND_Y - DRAW_H,
-  vx:0, vy:0, facing:1,
-  state:"idle", tick:0
-};
+/* ======= PLAYER / PHYS ======= */
+const hud = document.getElementById("hud");
+const heartsEl = document.getElementById("hearts");
+const overlay = document.getElementById("overlay");
+const stageName = document.getElementById("stageName");
+
+const GROUND_Y = cvs.height - 90;
+let DRAW_W=54, DRAW_H=81;
+
+const player = { x: (cvs.width-DRAW_W)/2 - 140, y: GROUND_Y - DRAW_H, vx:0, vy:0, facing:1,
+                 state:"idle", tick:0 };
 const anims = {
   idle : { frames:[0,1,2], speed:12 },
   walk : { frames:[3,4,5], speed: 8 },
@@ -132,45 +151,48 @@ const keys = { left:0, right:0, jump:0, punch:0 };
 function tapJump(v){ keys.jump=v; }
 function tapPunch(v){ keys.punch=v; }
 
+/* lives */
+let lives = 3;
+function drawHearts(){
+  heartsEl.style.display = "block";
+  heartsEl.innerHTML = "💛".repeat(lives);
+}
+
 /* ======= GAME FLOW ======= */
 let inGame=false, levelIndex=0;
-function levelById(id){ return LEVELS.findIndex(L=>L.id===id); }
+let jumps=0, prevJump=0;
 
+function spawnLeft(){ player.x=120; player.y=GROUND_Y-DRAW_H; player.vx=0; player.vy=0; jumps=0; prevJump=0; }
 function startGame(){
   document.getElementById("menu").style.display="none";
   cvs.style.display="block";
   document.getElementById("controls").style.display="flex";
   hud.style.display="block";
-  setLevel( levelById('room') );
+  heartsEl.style.display="block";
+  lives = 3; drawHearts();
+  setLevel(levelById('room'));
   inGame = true;
   requestAnimationFrame(loop);
 }
-
 function setLevel(i){
   levelIndex = i;
   const L = LEVELS[levelIndex];
   stageName.textContent = L.name;
   playMusic(L.music || 'menu');
-
-  // spawn a bit left of center
-  player.x = (cvs.width - DRAW_W)/2 - 140;
-  player.y = GROUND_Y - DRAW_H;
-  player.vx = 0; player.vy = 0; player.state = "idle"; player.tick = 0;
-  jumps = 0; prevJump = 0;
+  spawnLeft();
+  overlay.style.display = "none";
+}
+function retryLevel(){
+  lives = 3; drawHearts();
+  setLevel(levelIndex);
+}
+function backToMenu(){
+  stopAll();
+  location.reload();
 }
 
-/* ======= DOUBLE JUMP INPUT ======= */
-let jumps = 0;           // how many jumps performed since last time on ground
-let prevJump = 0;        // for edge detection
-const JUMP_V1 = -10;     // first jump impulse
-const JUMP_V2 = -9;      // second jump impulse
-
-function loop(){
-  requestAnimationFrame(loop);
-  if(!inGame) return;
-  update();
-  render();
-}
+/* ======= LOOP ======= */
+function loop(){ requestAnimationFrame(loop); if(!inGame) return; update(); render(); }
 
 function update(){
   const L = LEVELS[levelIndex];
@@ -180,33 +202,56 @@ function update(){
   if(keys.left){  player.vx = -3; player.facing = -1; }
   if(keys.right){ player.vx =  3; player.facing =  1; }
 
-  // jump edge detect (works for space/W/↑ and touch ↑)
-  const justPressed = keys.jump && !prevJump;
-  prevJump = keys.jump ? 1 : 0;
+  // double-jump edge detect
+  const justPressed = keys.jump && !prevJump; prevJump = keys.jump?1:0;
 
-  // on ground?
-  const onGround = (player.y >= GROUND_Y - DRAW_H);
+  // ground check depends on pit presence
+  const pit = L.pit;
+  let onGround = (player.y >= GROUND_Y - DRAW_H);
 
-  if(onGround){ jumps = 0; }
+  // if there's a pit, disable ground where the gap is
+  if(pit){
+    const overLeft  = (player.x + DRAW_W) <= pit.x;
+    const overRight = player.x >= pit.x + pit.w;
+    const feetAtGround = (player.y >= GROUND_Y - DRAW_H - 0.01);
+    if(feetAtGround && !(overLeft || overRight)) onGround = false;
+  }
 
+  if(onGround) jumps=0;
   if(justPressed){
-    if(jumps===0){                    // first jump
-      player.vy = JUMP_V1; player.state = "jump"; jumps = 1;
-    } else if(jumps===1){             // second jump (double jump)
-      player.vy = JUMP_V2; player.state = "jump"; jumps = 2;
-    }
+    if(jumps===0){ player.vy = -10; player.state="jump"; jumps=1; }
+    else if(jumps===1){ player.vy = -9; player.state="jump"; jumps=2; }
   }
 
   // physics
-  player.vy += 0.55;                  // gravity
+  player.vy += 0.55;
   player.x  += player.vx;
   player.y  += player.vy;
 
-  // floor clamp
+  // floor clamp (only if not inside pit)
   if(player.y >= GROUND_Y - DRAW_H){
-    player.y = GROUND_Y - DRAW_H;
-    if(player.state === "jump") player.state = "idle";
-    player.vy = 0;
+    let canLand = true;
+    if(pit){
+      const overLeft  = (player.x + DRAW_W) <= pit.x;
+      const overRight = player.x >= pit.x + pit.w;
+      if(!(overLeft || overRight)) canLand = false;
+    }
+    if(canLand){
+      player.y = GROUND_Y - DRAW_H;
+      if(player.state === "jump") player.state="idle";
+      player.vy = 0;
+    }
+  }
+
+  // fell below screen?
+  if(player.y > cvs.height + 40){
+    lives--;
+    drawHearts();
+    if(lives > 0){ spawnLeft(); }
+    else{
+      playMusic('gameover');
+      overlay.style.display = "flex";
+    }
   }
 
   // state
@@ -216,14 +261,14 @@ function update(){
 
   player.tick++;
 
-  // door trigger (overlap to switch)
+  // doors overlap
   if(L.doors){
-    const px = player.x, py = player.y, pw = DRAW_W, ph = DRAW_H;
+    const px=player.x, py=player.y, pw=DRAW_W, ph=DRAW_H;
     for(const d of L.doors){
-      const dx = d.x, dy = GROUND_Y - d.h, dw = d.w, dh = d.h;
+      const dx=d.x, dy=GROUND_Y-d.h, dw=d.w, dh=d.h;
       if(px < dx+dw && px+pw > dx && py < dy+dh && py+ph > dy){
-        const next = levelById(d.target);
-        if(next>=0){ setLevel(next); break; }
+        setLevel( levelById(d.target) );
+        break;
       }
     }
   }
@@ -232,70 +277,68 @@ function update(){
 function render(){
   const L = LEVELS[levelIndex];
 
-  // background image (cover)
+  // background image cover
   if(L.bg instanceof Image && L.bg.complete){
     const iw=L.bg.naturalWidth, ih=L.bg.naturalHeight;
-    const s = Math.max(cvs.width/iw, cvs.height/ih);
+    const s=Math.max(cvs.width/iw, cvs.height/ih);
     const dw=Math.floor(iw*s), dh=Math.floor(ih*s);
     const dx=Math.floor((cvs.width-dw)/2), dy=Math.floor((cvs.height-dh)/2);
     ctx.imageSmoothingEnabled=false;
     ctx.drawImage(L.bg, 0,0,iw,ih, dx,dy, dw,dh);
   }else{
-    // fallback banded background
-    ctx.fillStyle = L.bgTop || "#0e2230"; ctx.fillRect(0,0,cvs.width, cvs.height*0.50);
-    ctx.fillStyle = L.bgMid || "#132a3a"; ctx.fillRect(0,cvs.height*0.50, cvs.width, cvs.height*0.25);
-    ctx.fillStyle = L.bgBot || "#0b1b27"; ctx.fillRect(0,cvs.height*0.75, cvs.width, cvs.height*0.25);
+    ctx.fillStyle=L.bgTop||"#0e2230"; ctx.fillRect(0,0,cvs.width,cvs.height*0.50);
+    ctx.fillStyle=L.bgMid||"#132a3a"; ctx.fillRect(0,cvs.height*0.50,cvs.width,cvs.height*0.25);
+    ctx.fillStyle=L.bgBot||"#0b1b27"; ctx.fillRect(0,cvs.height*0.75,cvs.width,cvs.height*0.25);
   }
 
-  // ground strip
+  // ground (with optional pit)
+  const pit=L.pit;
   ctx.fillStyle = L.ground || "#8a5a32";
-  ctx.fillRect(30, GROUND_Y, cvs.width-60, 28);
+  if(pit){
+    // left cliff
+    ctx.fillRect(30, GROUND_Y, pit.x - 30, 28);
+    // right cliff
+    const rightW = (cvs.width - 30) - (pit.x + pit.w);
+    ctx.fillRect(pit.x + pit.w, GROUND_Y, rightW, 28);
+    // pit dark
+    ctx.fillStyle = "#1a1010";
+    ctx.fillRect(pit.x, GROUND_Y, pit.w, 34);
+  }else{
+    ctx.fillRect(30, GROUND_Y, cvs.width-60, 28);
+  }
 
   // doors
   if(L.doors){
     for(const d of L.doors){
-      ctx.fillStyle = "#996c52";
-      ctx.fillRect(d.x-2, GROUND_Y - d.h - 2, d.w+4, d.h+4);
-      ctx.fillStyle = "#89b9ac";
-      ctx.fillRect(d.x, GROUND_Y - d.h, d.w, d.h);
-      if(d.label){
-        ctx.font = "14px monospace";
-        ctx.fillStyle = "#fff";
-        ctx.textAlign = "center";
-        ctx.fillText(d.label, d.x + d.w/2, GROUND_Y - d.h - 6);
-      }
+      ctx.fillStyle="#996c52"; ctx.fillRect(d.x-2, GROUND_Y-d.h-2, d.w+4, d.h+4);
+      ctx.fillStyle="#89b9ac"; ctx.fillRect(d.x,   GROUND_Y-d.h,   d.w,   d.h);
+      if(d.label){ ctx.font="14px monospace"; ctx.fillStyle="#fff"; ctx.textAlign="center";
+        ctx.fillText(d.label, d.x+d.w/2, GROUND_Y-d.h-6); }
     }
   }
 
   // player
   if(spriteReady){
-    const a = anims[player.state];
-    const frame = a.frames[Math.floor(player.tick / a.speed) % a.frames.length];
-    drawFrame(frame, Math.round(player.x), Math.round(player.y), player.facing<0);
+    const a=anims[player.state];
+    const f=a.frames[Math.floor(player.tick/a.speed)%a.frames.length];
+    drawFrame(f, Math.round(player.x), Math.round(player.y), player.facing<0);
   }
 }
 
 function drawFrame(f, dx, dy, flip){
-  const PAD=2;
-  const col=f%COLS, row=(f/COLS)|0;
+  const PAD=2, col=f%COLS, row=(f/COLS)|0;
   const sx=col*FW+PAD, sy=row*FH+PAD, sw=FW-PAD*2, sh=FH-PAD*2;
-
   ctx.save();
-  if(flip){
-    ctx.translate(dx + DRAW_W, dy);
-    ctx.scale(-1,1);
-    ctx.drawImage(sprite, sx,sy,sw,sh, 0,0, DRAW_W, DRAW_H);
-  }else{
-    ctx.drawImage(sprite, sx,sy,sw,sh, dx,dy, DRAW_W, DRAW_H);
-  }
+  if(flip){ ctx.translate(dx+DRAW_W,dy); ctx.scale(-1,1); ctx.drawImage(sprite,sx,sy,sw,sh,0,0,DRAW_W,DRAW_H); }
+  else    { ctx.drawImage(sprite,sx,sy,sw,sh,dx,dy,DRAW_W,DRAW_H); }
   ctx.restore();
 }
 
-/* ======= KEYBOARD ======= */
+/* ======= INPUT ======= */
 addEventListener("keydown", e=>{
   if(e.key==="ArrowLeft"||e.key==="a") keys.left=1;
   if(e.key==="ArrowRight"||e.key==="d") keys.right=1;
-  if(e.key==="ArrowUp"||e.key==="w"||e.key===" ") keys.jump=1;      // SPACE supports jump
+  if(e.key==="ArrowUp"||e.key==="w"||e.key===" ") keys.jump=1;
   if(e.key==="j"||e.key==="J") keys.punch=1;
 });
 addEventListener("keyup", e=>{
