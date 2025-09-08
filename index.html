@@ -8,22 +8,24 @@
   :root{ --frame-max: 980px; --pad: 10px; }
   html,body{margin:0;background:#000;color:#fff;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
   #frame{max-width:var(--frame-max); margin:0 auto; padding:0 var(--pad);}
+
   /* MENU */
   #menu{display:flex;flex-direction:column;align-items:center;gap:14px;padding:18px 0}
   #menu img{max-width:100%;height:auto;border-radius:8px}
   .btn{background:#111;border:2px solid #fff;color:#fff;border-radius:10px;padding:12px 22px;font-size:18px}
   .btn:active{transform:translateY(1px)}
 
-  /* GAME AREA */
+  /* GAME */
   #wrap{position:relative}
   #cvs{display:none;width:100%;height:auto;background:#0b1622;image-rendering:pixelated;border-radius:12px}
   #hud{position:absolute;left:10px;top:10px;display:none;gap:8px;align-items:center}
   .tag{background:#0b0e12;color:#cfe1ff;padding:6px 10px;border-radius:10px;font:14px/1.2 monospace;opacity:.9}
-  #hearts{display:flex;gap:6px;margin-left:6px}
-  .heart{width:22px;height:22px;background:#ffd54d;border:2px solid #ffc107;border-radius:5px;box-shadow:0 0 0 2px #8b5a00 inset; transform:rotate(-45deg)}
-  .heart:before,.heart:after{content:"";position:absolute;width:22px;height:22px;background:#ffd54d;border:2px solid #ffc107;border-radius:50%}
-  .heart:before{left:-12px;top:-1px}
-  .heart:after{left:-1px;top:-12px}
+  #hearts{display:flex;gap:8px;margin-left:6px}
+  .heart{position:relative;width:18px;height:18px;background:#ffd54d;border:2px solid #ffc107;border-radius:4px;
+         box-shadow:0 0 0 2px #8b5a00 inset;transform:rotate(-45deg)}
+  .heart:before,.heart:after{content:"";position:absolute;width:18px;height:18px;background:#ffd54d;border:2px solid #ffc107;border-radius:50%}
+  .heart:before{left:-11px;top:-2px}
+  .heart:after{left:-2px;top:-11px}
   .heart.dead{opacity:.25;filter:grayscale(1)}
 
   /* TOUCH CONTROLS */
@@ -39,15 +41,12 @@
       <img src="menu-title.png" alt="Raiden and the Wing Chun Temple" />
       <button class="btn" onclick="startGame()">Play</button>
       <button class="btn" id="musicBtn" onclick="toggleMusic()">Music: On</button>
-      <button class="btn" onclick="alert('Credits\\nMusic & Art: You\\nCode helper: ChatGPT')">Credits</button>
+      <button class="btn" onclick="alert('Credits\nMusic & Art: You\nCode helper: ChatGPT')">Credits</button>
     </div>
 
     <!-- GAME -->
     <div id="wrap">
-      <!-- Landscape canvas -->
       <canvas id="cvs" width="800" height="450"></canvas>
-
-      <!-- HUD -->
       <div id="hud">
         <div id="stageTag" class="tag">Stage: —</div>
         <div id="spriteTag" class="tag">sprite: …</div>
@@ -65,7 +64,7 @@
   </div>
 
 <script>
-/* ================== AUDIO ================== */
+/* ============== AUDIO ============== */
 let musicOn = true, currentMusic = "menu";
 const tracks = {};
 ["menu","crane","snake","tiger","gates","temple","victory","gameover","credits"].forEach(n=>{
@@ -81,19 +80,19 @@ function toggleMusic(){
   if(musicOn) playMusic(currentMusic); else stopAll();
 }
 
-/* ================== CANVAS ================== */
+/* ============== CANVAS ============== */
 const cvs = document.getElementById("cvs");
 const ctx = cvs.getContext("2d", { alpha:true });
 ctx.imageSmoothingEnabled = false;
 const W = cvs.width, H = cvs.height;
 const GROUND_Y = H - 70;
 
-/* ================== ASSETS ================== */
+/* ============== ASSETS ============== */
 const stageTag = document.getElementById("stageTag");
 const spriteTag = document.getElementById("spriteTag");
 const heartsBox = document.getElementById("hearts");
 
-function loadImg(src){ const i = new Image(); i.src = src+"?v="+Date.now(); return i; }
+function loadImg(src){ const i=new Image(); i.src = src+"?v="+Date.now(); return i; }
 
 const BG = {
   room:        loadImg("bg-room.png"),
@@ -103,20 +102,19 @@ const BG = {
   tiger:       loadImg("bg-tiger.png"),
   templegates: loadImg("bg-templegates.png"),
   temple:      loadImg("bg-temple.png"),
-  hidden:      loadImg("bg-hidden.png") // optional; if missing we’ll fallback to room
+  hidden:      loadImg("bg-hidden.png")
 };
 
-/* ----- Scale a background image to cover the canvas (landscape) ----- */
 function drawBg(img){
   if(!img || !img.complete) return;
   const iw = img.naturalWidth, ih = img.naturalHeight;
-  const scale = Math.max(W/iw, H/ih);
-  const dw = Math.floor(iw*scale), dh = Math.floor(ih*scale);
-  const dx = Math.floor((W - dw)/2), dy = Math.floor((H - dh)/2);
+  const s = Math.max(W/iw, H/ih);
+  const dw = Math.floor(iw*s), dh = Math.floor(ih*s);
+  const dx = Math.floor((W-dw)/2), dy = Math.floor((H-dh)/2);
   ctx.drawImage(img, dx, dy, dw, dh);
 }
 
-/* ================== SPRITE (3x3 grid) ================== */
+/* ============== SPRITE (3x3) ============== */
 let spriteReady=false, FW=0, FH=0, COLS=3, ROWS=3;
 const sprite = new Image();
 sprite.src = "raiden-sprites.png?v="+Date.now();
@@ -128,30 +126,24 @@ sprite.onload = ()=>{
 };
 sprite.onerror = ()=>{ spriteTag.textContent = "sprite: missing"; };
 
-/* ================== PLAYER ================== */
-let DRAW_W = 64, DRAW_H = 96;
-const player = {
-  x:(W-DRAW_W)/2, y:GROUND_Y-DRAW_H, vx:0, vy:0, facing:1,
-  state:"idle", tick:0, jumps:0
-};
+/* ============== PLAYER ============== */
+let DRAW_W=64, DRAW_H=96;
+const player = { x:(W-DRAW_W)/2, y:GROUND_Y-DRAW_H, vx:0, vy:0, facing:1, state:"idle", tick:0, jumps:0 };
 const anims = {
-  idle : { frames:[0,1,2], speed:12 },
-  walk : { frames:[3,4,5], speed: 8 },
-  punch: { frames:[6,7],   speed: 6 },
-  jump : { frames:[8],     speed:12 }
+  idle:{frames:[0,1,2],speed:12},
+  walk:{frames:[3,4,5],speed:8},
+  punch:{frames:[6,7],speed:6},
+  jump:{frames:[8],speed:12}
 };
-
 const keys = { left:0, right:0, jump:0, punch:0 };
 
-/* ================== LEVELS & FLOW ================== */
+/* ============== LEVELS ============== */
 function door(x){ return {x, y:GROUND_Y-120, w:44, h:120}; }
 
 const LEVELS = [
-  // Home: one door to the right → Field
   { id:"room", name:"Room", music:"menu", bg:BG.room,
-    doors:[door(W-58)], nextLeft:null, nextRight:"field" },
+    doors:[door(W-58)], nextLeft:null, nextRight:"field" },            // only RIGHT door
 
-  // Field with pit
   { id:"field", name:"Field", music:"crane", bg:BG.field,
     doors:[door(14), door(W-58)], pit:{x:Math.floor(W/2)-30, w:60},
     nextLeft:"room", nextRight:"crane" },
@@ -168,135 +160,119 @@ const LEVELS = [
   { id:"templegates", name:"Temple Gates", music:"gates", bg:BG.templegates,
     doors:[door(14), door(W-58)], nextLeft:"tiger", nextRight:"temple" },
 
-  // Inside temple → Hidden Room
   { id:"temple", name:"Temple", music:"temple", bg:BG.temple,
     doors:[door(14), door(W-58)], nextLeft:"templegates", nextRight:"hidden" },
 
-  // Hidden room: right → home, left → temple
   { id:"hidden", name:"Hidden Room", music:"temple", bg:(BG.hidden || BG.room),
     doors:[door(14), door(W-58)], nextLeft:"temple", nextRight:"room" },
 ];
 
-let inGame=false, levelIndex=0;
-let lives = 3;
+let inGame=false, levelIndex=0, lives=3;
 
 function setHearts(n){
-  heartsBox.innerHTML = "";
+  heartsBox.innerHTML="";
   for(let i=0;i<3;i++){
-    const h = document.createElement("div");
-    h.className = "heart"+(i<n?"":" dead");
+    const h=document.createElement("div");
+    h.className="heart"+(i<n?"":" dead");
     heartsBox.appendChild(h);
   }
 }
 
+/* ============== FLOW ============== */
 function startGame(){
-  // UI switches
   document.getElementById("menu").style.display="none";
   document.getElementById("cvs").style.display="block";
   document.getElementById("controls").style.display="flex";
   document.getElementById("hud").style.display="flex";
-
-  // init
-  lives = 3; setHearts(lives);
+  lives=3; setHearts(lives);
   setLevel(0);
-  inGame = true;
+  inGame=true;
   requestAnimationFrame(loop);
 }
-
 function gameOver(){
-  stopAll();
-  tracks.gameover?.play();
+  stopAll(); tracks.gameover?.play();
   alert("Game Over!");
-  // back to menu
   inGame=false;
   document.getElementById("menu").style.display="flex";
   document.getElementById("cvs").style.display="none";
   document.getElementById("controls").style.display="none";
   document.getElementById("hud").style.display="none";
 }
-
 function setLevel(i){
-  levelIndex = i;
-  const L = LEVELS[levelIndex];
-  stageTag.textContent = "Stage: " + L.name;
+  levelIndex=i;
+  const L=LEVELS[levelIndex];
+  stageTag.textContent="Stage: "+L.name;
   playMusic(L.music);
-
-  // spawn
-  player.x = 80;
-  player.y = GROUND_Y - DRAW_H;
-  player.vx = 0; player.vy = 0; player.state = "idle"; player.tick=0; player.jumps=0;
+  player.x=80; player.y=GROUND_Y-DRAW_H; player.vx=0; player.vy=0; player.state="idle"; player.tick=0; player.jumps=0;
 }
-
-function nextLevel(dir){  // dir = -1 (left) or +1 (right)
-  const L = LEVELS[levelIndex];
-  const id = dir<0 ? L.nextLeft : L.nextRight;
+function nextLevel(dir){
+  const L=LEVELS[levelIndex];
+  const id = dir<0?L.nextLeft:L.nextRight;
   if(!id) return;
   const idx = LEVELS.findIndex(l=>l.id===id);
   if(idx>=0) setLevel(idx);
 }
 
-/* ================== LOOP ================== */
-let lastTime=0;
-function loop(ts){
+/* ============== LOOP ============== */
+let last=0;
+function loop(t){
   requestAnimationFrame(loop);
   if(!inGame) return;
-  const dt = Math.min(33, ts - lastTime); lastTime = ts;
+  const dt = Math.min(33, t-last); last=t;
   update(dt/16.66);
   render();
 }
 
-/* ================== UPDATE ================== */
+/* ============== UPDATE ============== */
+function rectOverlap(ax,ay,aw,ah, bx,by,bw,bh){
+  return (ax < bx+bw && ax+aw > bx && ay < by+bh && ay+ah > by);
+}
+
 function update(dt){
   const L = LEVELS[levelIndex];
 
   // input
   const speed = 2.8;
-  player.vx = 0;
-  if(keys.left){  player.vx = -speed; player.facing=-1; }
-  if(keys.right){ player.vx =  speed; player.facing= 1; }
+  player.vx=0;
+  if(keys.left){  player.vx=-speed; player.facing=-1; }
+  if(keys.right){ player.vx= speed; player.facing= 1; }
 
-  // jump / double jump
+  // jump / double-jump
   if(keys.jump){
-    if(player._jumpLatch!==true){
-      player._jumpLatch=true;
+    if(!player._jl){
+      player._jl=true;
       const onGround = (player.y >= GROUND_Y - DRAW_H - 0.01);
-      if(onGround){ player.vy = -9.2; player.jumps=1; player.state="jump"; }
-      else if(player.jumps===1){ player.vy = -8.4; player.jumps=2; player.state="jump"; }
+      if(onGround){ player.vy=-9.2; player.jumps=1; player.state="jump"; }
+      else if(player.jumps===1){ player.vy=-8.4; player.jumps=2; player.state="jump"; }
     }
-  } else {
-    player._jumpLatch=false;
-  }
+  } else player._jl=false;
 
   // physics
-  player.vy += 0.45;                 // gravity
+  player.vy += 0.45;
   player.x  += player.vx;
   player.y  += player.vy;
 
-  // floor
-  if(player.y >= GROUND_Y - DRAW_H){
+  // horizontal bounds
+  player.x = Math.max(0, Math.min(W-DRAW_W, player.x));
+
+  // PIT logic: only collide with floor when NOT over the pit
+  const center = player.x + DRAW_W/2;
+  const overPit = L.pit && center > L.pit.x && center < (L.pit.x + L.pit.w);
+
+  // floor collision
+  if(!overPit && player.y >= GROUND_Y - DRAW_H){
     player.y = GROUND_Y - DRAW_H;
-    if(player.state === "jump") player.state="idle";
-    player.vy = 0; player.jumps=0;
+    if(player.state==="jump") player.state="idle";
+    player.vy=0; player.jumps=0;
   }
 
-  // walls
-  player.x = Math.max(0, Math.min(W - DRAW_W, player.x));
-
-  // pit (only on levels with L.pit)
-  if(L.pit){
-    const pxCenter = player.x + DRAW_W/2;
-    if(pxCenter > L.pit.x && pxCenter < L.pit.x + L.pit.w && player.y >= GROUND_Y - DRAW_H){
-      // fall!
-      player.vy = 10;
-    }
-    // if fallen below screen -> lose life & respawn
-    if(player.y > H){
-      lives = Math.max(0, lives-1);
-      setHearts(lives);
-      if(lives===0){ gameOver(); return; }
-      setLevel(levelIndex); // respawn same level
-      return;
-    }
+  // fell below screen => lose life & respawn
+  if(player.y > H){
+    lives = Math.max(0, lives-1);
+    setHearts(lives);
+    if(lives===0){ gameOver(); return; }
+    setLevel(levelIndex);
+    return;
   }
 
   // state machine
@@ -304,10 +280,9 @@ function update(dt){
   else if(player.vx)  player.state="walk";
   else if(player.state!=="jump") player.state="idle";
 
-  // door overlap check (simple AABB)
+  // door collision
   for(const d of (L.doors||[])){
     if(rectOverlap(player.x, player.y, DRAW_W, DRAW_H, d.x, d.y, d.w, d.h)){
-      // decide which side door is on
       if(d.x < W/2) nextLevel(-1); else nextLevel(+1);
       break;
     }
@@ -316,61 +291,46 @@ function update(dt){
   player.tick++;
 }
 
-function rectOverlap(ax,ay,aw,ah, bx,by,bw,bh){
-  return (ax < bx+bw && ax+aw > bx && ay < by+bh && ay+ah > by);
-}
-
-/* ================== RENDER ================== */
+/* ============== RENDER ============== */
 function render(){
   const L = LEVELS[levelIndex];
-
-  // background image scaled to cover
   drawBg(L.bg || BG.room);
 
-  // ground (simple bar so Raiden has footing over any BG)
-  ctx.fillStyle = "#7c5537";
+  // ground
+  ctx.fillStyle="#7c5537";
   ctx.fillRect(40, GROUND_Y, W-80, 22);
 
-  // pit (visual)
+  // pit visual
   if(L.pit){
-    ctx.fillStyle = "#21313f";
+    ctx.fillStyle="#21313f";
     ctx.fillRect(L.pit.x, GROUND_Y, L.pit.w, 22);
   }
 
   // doors
-  ctx.fillStyle = "#92c5ba";
+  ctx.fillStyle="#92c5ba";
   (L.doors||[]).forEach(d=>{
     ctx.fillRect(d.x, d.y, d.w, d.h);
-    ctx.strokeStyle = "#a86e3f";
-    ctx.lineWidth = 4;
-    ctx.strokeRect(d.x, d.y, d.w, d.h);
+    ctx.strokeStyle="#a86e3f"; ctx.lineWidth=4; ctx.strokeRect(d.x, d.y, d.w, d.h);
   });
 
   // player
   if(spriteReady){
     const a = anims[player.state];
-    const frame = a.frames[Math.floor(player.tick / a.speed) % a.frames.length];
-    drawFrame(frame, Math.round(player.x), Math.round(player.y), player.facing<0);
+    const f = a.frames[Math.floor(player.tick/a.speed)%a.frames.length];
+    drawFrame(f, Math.round(player.x), Math.round(player.y), player.facing<0);
   }
 }
 
 function drawFrame(f, dx, dy, flip){
-  const PAD = 2;
-  const col = f % COLS, row = (f / COLS) | 0;
-  const sx = col*FW + PAD, sy = row*FH + PAD, sw = FW - PAD*2, sh = FH - PAD*2;
-
+  const PAD=2, col=f%COLS, row=(f/COLS|0);
+  const sx=col*FW+PAD, sy=row*FH+PAD, sw=FW-PAD*2, sh=FH-PAD*2;
   ctx.save();
-  if(flip){
-    ctx.translate(dx + DRAW_W, dy);
-    ctx.scale(-1, 1);
-    ctx.drawImage(sprite, sx, sy, sw, sh, 0, 0, DRAW_W, DRAW_H);
-  } else {
-    ctx.drawImage(sprite, sx, sy, sw, sh, dx, dy, DRAW_W, DRAW_H);
-  }
+  if(flip){ ctx.translate(dx+DRAW_W,dy); ctx.scale(-1,1); ctx.drawImage(sprite,sx,sy,sw,sh,0,0,DRAW_W,DRAW_H); }
+  else    { ctx.drawImage(sprite,sx,sy,sw,sh,dx,dy,DRAW_W,DRAW_H); }
   ctx.restore();
 }
 
-/* ================== INPUT ================== */
+/* ============== INPUT ============== */
 addEventListener("keydown", e=>{
   if(e.key==="ArrowLeft"||e.key==="a") keys.left=1;
   if(e.key==="ArrowRight"||e.key==="d") keys.right=1;
