@@ -18,20 +18,23 @@
   /* GAME */
   #wrap{position:relative}
   #cvs{display:none;width:100%;height:auto;background:#0b1622;image-rendering:pixelated;border-radius:12px}
-  #hud{position:absolute;left:10px;top:10px;display:none;gap:8px;align-items:center}
+  #hud{position:absolute;left:10px;top:10px;display:none;gap:10px;align-items:center}
   .tag{background:#0b0e12;color:#cfe1ff;padding:6px 10px;border-radius:10px;font:14px/1.2 monospace;opacity:.9}
-  #hearts{display:flex;gap:8px;margin-left:6px}
-  .heart{position:relative;width:18px;height:18px;background:#ffd54d;border:2px solid #ffc107;border-radius:4px;
-         box-shadow:0 0 0 2px #8b5a00 inset;transform:rotate(-45deg)}
-  .heart:before,.heart:after{content:"";position:absolute;width:18px;height:18px;background:#ffd54d;border:2px solid #ffc107;border-radius:50%}
-  .heart:before{left:-11px;top:-2px}
-  .heart:after{left:-2px;top:-11px}
-  .heart.dead{opacity:.25;filter:grayscale(1)}
+  #hearts{font:18px/1 monospace}
+  #hearts .off{opacity:.25;filter:grayscale(1)}
 
   /* TOUCH CONTROLS */
   #controls{display:none;gap:14px;justify-content:space-between;margin:10px 0}
   .pad{flex:1;min-width:90px;height:64px;font-size:22px;border:2px solid #2e3a46;background:#111923;color:#fff;border-radius:14px}
   .pad:active{filter:brightness(1.2)}
+
+  /* OVERLAYS */
+  #flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .18s}
+  #overlay{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.5)}
+  #overlay .box{background:#0b0e12; border:2px solid #fff; border-radius:12px; padding:22px 20px; text-align:center; width:min(90%,420px)}
+  #overlay h2{margin:0 0 10px}
+  #overlay p{margin:0 0 14px;opacity:.9}
+  #overlay .btn{margin:0 8px}
 </style>
 </head>
 <body>
@@ -47,10 +50,23 @@
     <!-- GAME -->
     <div id="wrap">
       <canvas id="cvs" width="800" height="450"></canvas>
+
+      <!-- HUD -->
       <div id="hud">
         <div id="stageTag" class="tag">Stage: —</div>
         <div id="spriteTag" class="tag">sprite: …</div>
-        <div id="hearts"></div>
+        <div id="hearts">💛💛💛</div>
+      </div>
+
+      <!-- Effects + Game Over -->
+      <div id="flash"></div>
+      <div id="overlay">
+        <div class="box">
+          <h2>Game Over</h2>
+          <p>You ran out of lives.</p>
+          <button class="btn" onclick="retryLevel()">Retry</button>
+          <button class="btn" onclick="backToMenu()">Menu</button>
+        </div>
       </div>
     </div>
 
@@ -67,13 +83,13 @@
 /* ============== AUDIO ============== */
 let musicOn = true, currentMusic = "menu";
 const tracks = {};
-["menu","crane","snake","tiger","gates","temple","victory","gameover","credits"].forEach(n=>{
+["menu","crane","snake","tiger","gates","temple","victory","gameover","credits","lose"].forEach(n=>{
   const a = new Audio(n+".mp3");
-  a.loop = !["victory","gameover"].includes(n);
+  a.loop = !["victory","gameover","lose"].includes(n);
   tracks[n] = a;
 });
 function stopAll(){ for(const a of Object.values(tracks)){ a.pause(); a.currentTime=0; } }
-function playMusic(name){ if(!musicOn) return; stopAll(); currentMusic=name; tracks[name]?.play(); }
+function playMusic(name){ if(!musicOn) return; stopAll(); currentMusic=name; tracks[name]?.play().catch(()=>{}); }
 function toggleMusic(){
   musicOn = !musicOn;
   document.getElementById("musicBtn").textContent = "Music: " + (musicOn?"On":"Off");
@@ -90,7 +106,9 @@ const GROUND_Y = H - 70;
 /* ============== ASSETS ============== */
 const stageTag = document.getElementById("stageTag");
 const spriteTag = document.getElementById("spriteTag");
-const heartsBox = document.getElementById("hearts");
+const heartsEl  = document.getElementById("hearts");
+const flashEl   = document.getElementById("flash");
+const overlayEl = document.getElementById("overlay");
 
 function loadImg(src){ const i=new Image(); i.src = src+"?v="+Date.now(); return i; }
 
@@ -102,7 +120,7 @@ const BG = {
   tiger:       loadImg("bg-tiger.png"),
   templegates: loadImg("bg-templegates.png"),
   temple:      loadImg("bg-temple.png"),
-  hidden:      loadImg("bg-hidden.png")
+  hidden:      loadImg("bg-hidden.png") // optional
 };
 
 function drawBg(img){
@@ -118,17 +136,12 @@ function drawBg(img){
 let spriteReady=false, FW=0, FH=0, COLS=3, ROWS=3;
 const sprite = new Image();
 sprite.src = "raiden-sprites.png?v="+Date.now();
-sprite.onload = ()=>{
-  FW = Math.floor(sprite.naturalWidth / COLS);
-  FH = Math.floor(sprite.naturalHeight / ROWS);
-  spriteReady = true;
-  spriteTag.textContent = "sprite: ok";
-};
-sprite.onerror = ()=>{ spriteTag.textContent = "sprite: missing"; };
+sprite.onload = ()=>{ FW=Math.floor(sprite.naturalWidth/COLS); FH=Math.floor(sprite.naturalHeight/ROWS); spriteReady=true; spriteTag.textContent="sprite: ok"; };
+sprite.onerror = ()=>{ spriteTag.textContent="sprite: missing"; };
 
 /* ============== PLAYER ============== */
 let DRAW_W=64, DRAW_H=96;
-const player = { x:(W-DRAW_W)/2, y:GROUND_Y-DRAW_H, vx:0, vy:0, facing:1, state:"idle", tick:0, jumps:0 };
+const player = { x:80, y:GROUND_Y-DRAW_H, vx:0, vy:0, facing:1, state:"idle", tick:0, jumps:0 };
 const anims = {
   idle:{frames:[0,1,2],speed:12},
   walk:{frames:[3,4,5],speed:8},
@@ -142,10 +155,11 @@ function door(x){ return {x, y:GROUND_Y-120, w:44, h:120}; }
 
 const LEVELS = [
   { id:"room", name:"Room", music:"menu", bg:BG.room,
-    doors:[door(W-58)], nextLeft:null, nextRight:"field" },            // only RIGHT door
+    doors:[door(W-58)], nextLeft:null, nextRight:"field" },  // only RIGHT door
 
+  // Field with WIDER pit (was ~60, now 120)
   { id:"field", name:"Field", music:"crane", bg:BG.field,
-    doors:[door(14), door(W-58)], pit:{x:Math.floor(W/2)-30, w:60},
+    doors:[door(14), door(W-58)], pit:{x:Math.floor(W/2)-60, w:120},
     nextLeft:"room", nextRight:"crane" },
 
   { id:"crane", name:"Crane", music:"crane", bg:BG.crane,
@@ -163,19 +177,16 @@ const LEVELS = [
   { id:"temple", name:"Temple", music:"temple", bg:BG.temple,
     doors:[door(14), door(W-58)], nextLeft:"templegates", nextRight:"hidden" },
 
-  { id:"hidden", name:"Hidden Room", music:"temple", bg:(BG.hidden || BG.room),
+  { id:"hidden", name:"Hidden Room", music:"temple", bg:(BG.hidden && BG.hidden.complete?BG.hidden:BG.room),
     doors:[door(14), door(W-58)], nextLeft:"temple", nextRight:"room" },
 ];
 
-let inGame=false, levelIndex=0, lives=3;
+let inGame=false, levelIndex=0, lives=3, paused=false;
 
 function setHearts(n){
-  heartsBox.innerHTML="";
-  for(let i=0;i<3;i++){
-    const h=document.createElement("div");
-    h.className="heart"+(i<n?"":" dead");
-    heartsBox.appendChild(h);
-  }
+  // Simple emoji hearts, dim the “lost” ones
+  const arr = [1,2,3].map(i => `<span class="${i<=n?'on':'off'}">💛</span>`);
+  heartsEl.innerHTML = arr.join('');
 }
 
 /* ============== FLOW ============== */
@@ -186,38 +197,51 @@ function startGame(){
   document.getElementById("hud").style.display="flex";
   lives=3; setHearts(lives);
   setLevel(0);
-  inGame=true;
+  inGame=true; paused=false;
   requestAnimationFrame(loop);
-}
-function gameOver(){
-  stopAll(); tracks.gameover?.play();
-  alert("Game Over!");
-  inGame=false;
-  document.getElementById("menu").style.display="flex";
-  document.getElementById("cvs").style.display="none";
-  document.getElementById("controls").style.display="none";
-  document.getElementById("hud").style.display="none";
 }
 function setLevel(i){
   levelIndex=i;
   const L=LEVELS[levelIndex];
-  stageTag.textContent="Stage: "+L.name;
+  stageTag.textContent = "Stage: " + L.name;
   playMusic(L.music);
+  // spawn near left
   player.x=80; player.y=GROUND_Y-DRAW_H; player.vx=0; player.vy=0; player.state="idle"; player.tick=0; player.jumps=0;
+}
+function retryLevel(){
+  lives=3; setHearts(lives);
+  overlayEl.style.display="none"; paused=false;
+  setLevel(levelIndex);
+}
+function backToMenu(){
+  overlayEl.style.display="none"; paused=false;
+  stopAll();
+  // reset UI
+  document.getElementById("menu").style.display="flex";
+  document.getElementById("cvs").style.display="none";
+  document.getElementById("controls").style.display="none";
+  document.getElementById("hud").style.display="none";
+  inGame=false;
 }
 function nextLevel(dir){
   const L=LEVELS[levelIndex];
-  const id = dir<0?L.nextLeft:L.nextRight;
+  const id = dir<0 ? L.nextLeft : L.nextRight;
   if(!id) return;
   const idx = LEVELS.findIndex(l=>l.id===id);
   if(idx>=0) setLevel(idx);
+}
+
+function flash(color="#fff", dur=180){
+  flashEl.style.background = color;
+  flashEl.style.opacity = 0.9;
+  setTimeout(()=>{ flashEl.style.opacity = 0; }, dur);
 }
 
 /* ============== LOOP ============== */
 let last=0;
 function loop(t){
   requestAnimationFrame(loop);
-  if(!inGame) return;
+  if(!inGame || paused) return;
   const dt = Math.min(33, t-last); last=t;
   update(dt/16.66);
   render();
@@ -237,7 +261,7 @@ function update(dt){
   if(keys.left){  player.vx=-speed; player.facing=-1; }
   if(keys.right){ player.vx= speed; player.facing= 1; }
 
-  // jump / double-jump
+  // jump / double-jump (edge on)
   if(keys.jump){
     if(!player._jl){
       player._jl=true;
@@ -252,37 +276,46 @@ function update(dt){
   player.x  += player.vx;
   player.y  += player.vy;
 
-  // horizontal bounds
+  // bounds
   player.x = Math.max(0, Math.min(W-DRAW_W, player.x));
 
-  // PIT logic: only collide with floor when NOT over the pit
+  // PIT: no ground collision while over it
   const center = player.x + DRAW_W/2;
   const overPit = L.pit && center > L.pit.x && center < (L.pit.x + L.pit.w);
 
-  // floor collision
+  // floor
   if(!overPit && player.y >= GROUND_Y - DRAW_H){
     player.y = GROUND_Y - DRAW_H;
     if(player.state==="jump") player.state="idle";
     player.vy=0; player.jumps=0;
   }
 
-  // fell below screen => lose life & respawn
-  if(player.y > H){
+  // fell off screen -> lose a life + flash + respawn OR game over
+  if(player.y > H + 10){
     lives = Math.max(0, lives-1);
     setHearts(lives);
-    if(lives===0){ gameOver(); return; }
-    setLevel(levelIndex);
-    return;
+    tracks.lose?.play().catch(()=>{});
+    flash("#fff", 160);
+    if(lives === 0){
+      stopAll(); tracks.gameover?.play().catch(()=>{});
+      overlayEl.style.display="flex";
+      paused = true;
+      return;
+    } else {
+      // respawn same level
+      setLevel(levelIndex);
+      return;
+    }
   }
 
-  // state machine
+  // state
   if(keys.punch)      player.state="punch";
   else if(player.vx)  player.state="walk";
   else if(player.state!=="jump") player.state="idle";
 
-  // door collision
+  // door overlap
   for(const d of (L.doors||[])){
-    if(rectOverlap(player.x, player.y, DRAW_W, DRAW_H, d.x, d.y, d.w, d.h)){
+    if(rectOverlap(player.x,player.y,DRAW_W,DRAW_H, d.x,d.y,d.w,d.h)){
       if(d.x < W/2) nextLevel(-1); else nextLevel(+1);
       break;
     }
@@ -294,6 +327,8 @@ function update(dt){
 /* ============== RENDER ============== */
 function render(){
   const L = LEVELS[levelIndex];
+
+  // BG
   drawBg(L.bg || BG.room);
 
   // ground
@@ -301,10 +336,7 @@ function render(){
   ctx.fillRect(40, GROUND_Y, W-80, 22);
 
   // pit visual
-  if(L.pit){
-    ctx.fillStyle="#21313f";
-    ctx.fillRect(L.pit.x, GROUND_Y, L.pit.w, 22);
-  }
+  if(L.pit){ ctx.fillStyle="#21313f"; ctx.fillRect(L.pit.x, GROUND_Y, L.pit.w, 22); }
 
   // doors
   ctx.fillStyle="#92c5ba";
@@ -315,8 +347,7 @@ function render(){
 
   // player
   if(spriteReady){
-    const a = anims[player.state];
-    const f = a.frames[Math.floor(player.tick/a.speed)%a.frames.length];
+    const a=anims[player.state], f=a.frames[Math.floor(player.tick/a.speed)%a.frames.length];
     drawFrame(f, Math.round(player.x), Math.round(player.y), player.facing<0);
   }
 }
