@@ -5,27 +5,20 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
 <title>Raiden and the Wing Chun Temple</title>
 <style>
-  :root{
-    --frame-max: 520px;   /* max width of the portrait game frame */
-    --pad: 10px;
-  }
+  :root{ --frame-max:520px; --pad:10px; }
   html,body{margin:0;background:#000;color:#fff;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
-  /* Centered portrait game frame */
-  #frame{max-width:var(--frame-max); margin:0 auto; padding:0 var(--pad); }
+  #frame{max-width:var(--frame-max);margin:0 auto;padding:0 var(--pad);}
   #menu{display:flex;flex-direction:column;align-items:center;gap:14px;padding:18px 0;}
   #menu img{width:100%;height:auto;display:block;border-radius:6px}
   .btn{background:#111;border:2px solid #fff;color:#fff;border-radius:8px;padding:12px 22px;font-size:18px}
   .btn:active{transform:translateY(1px)}
-  /* Canvas + HUD */
   #wrap{position:relative}
-  #cvs{display:none;width:100%;height:auto;background:#0b1622;image-rendering:pixelated; border-radius:12px}
+  #cvs{display:none;width:100%;height:auto;background:#0b1622;image-rendering:pixelated;border-radius:12px}
   #hud{position:absolute;left:10px;top:10px;background:rgba(0,0,0,.55);padding:6px 10px;border-radius:8px;
        font-family:monospace;font-size:14px;display:none}
-  /* Touch controls */
   #controls{display:none;gap:10px;justify-content:space-between;margin:10px 0}
   .pad{flex:1;min-width:60px;height:60px;font-size:20px;border:2px solid #303a46;background:#141c26;color:#fff;border-radius:12px}
   .pad:active{filter:brightness(1.2)}
-  /* Small helper tag (sprite/fps) */
   #tag{position:absolute;left:10px;top:10px;background:#0b0e12;color:#cfe1ff;
        padding:4px 8px;border-radius:10px;font:12px/1.2 monospace;opacity:.85;display:none}
 </style>
@@ -55,80 +48,90 @@
   </div>
 
 <script>
-/* ======= AUDIO ======= */
+/* ===== AUDIO ===== */
 let musicOn = true, currentMusic = "menu";
 const tracks = {};
 ["menu","crane","snake","tiger","temple","victory","gameover","credits"].forEach(n=>{
-  const a = new Audio(n + ".mp3");
-  a.loop = (n!=="victory" && n!=="gameover");
-  tracks[n] = a;
+  const a = new Audio(n + ".mp3"); a.loop = (n!=="victory" && n!=="gameover"); tracks[n]=a;
 });
 function stopAll(){ for(const a of Object.values(tracks)){ a.pause(); a.currentTime=0; } }
 function playMusic(name){ if(!musicOn) return; stopAll(); currentMusic=name; tracks[name]?.play(); }
 function toggleMusic(){
   musicOn = !musicOn;
-  document.getElementById("musicBtn").textContent = "Music: " + (musicOn?"On":"Off");
+  musicBtn.textContent = "Music: " + (musicOn?"On":"Off");
   if(musicOn) playMusic(currentMusic); else stopAll();
 }
+/* iOS/Android unlock on first tap */
+addEventListener('touchstart', () => {
+  for (const a of Object.values(tracks)) a.play().then(()=>a.pause()).catch(()=>{});
+}, { once:true });
 
-/* ======= LEVELS ======= */
+/* ===== LEVELS (0 = Room intro) ===== */
 const LEVELS = [
+  { id:"room",   name:"Raiden’s Room", music:"menu",
+    bgTop:"#0f1b28", bgMid:"#142334", bgBot:"#0c1723", ground:"#5a4a3c",
+    room:{ floorY:520, matY:540, doorX:285, doorW:40, doorH:110 }
+  },
   { id:"crane",  name:"Crane: Balance",  music:"crane",  bgTop:"#0e2230", bgMid:"#132a3a", bgBot:"#0b1b27", ground:"#8a5a32" },
   { id:"snake",  name:"Snake: Focus",    music:"snake",  bgTop:"#0d1f2c", bgMid:"#10302b", bgBot:"#0a1a19", ground:"#6a7d4a" },
   { id:"tiger",  name:"Tiger: Power",    music:"tiger",  bgTop:"#1d1a2e", bgMid:"#2b203a", bgBot:"#181425", ground:"#7b3e2f" },
   { id:"temple", name:"Temple: Harmony", music:"temple", bgTop:"#151b2a", bgMid:"#212f46", bgBot:"#151b2a", ground:"#6d5d4a" },
 ];
 
-/* ======= CANVAS / RENDER ======= */
+/* ===== CANVAS ===== */
 const cvs = document.getElementById("cvs");
 const ctx = cvs.getContext("2d", { alpha:true });
 ctx.imageSmoothingEnabled = false;
 
-/* ======= SPRITE (3×3) ======= */
+/* ===== SPRITE (3x3) ===== */
 const tag = document.getElementById("tag");
 let spriteReady=false, FW=0, FH=0, COLS=3, ROWS=3;
 const sprite = new Image();
-sprite.src = "raiden-sprites.png?v="+Date.now();     // cache-bust while iterating
-sprite.onload = () => {
+sprite.src = "raiden-sprites.png?v="+Date.now();
+sprite.onload = ()=>{
   FW = Math.floor(sprite.naturalWidth / COLS);
   FH = Math.floor(sprite.naturalHeight / ROWS);
-  spriteReady = true;
-  tag.style.display = "block";
-  tag.textContent = "sprite: ok";
+  spriteReady = true; tag.style.display="block"; tag.textContent="sprite: ok";
 };
-sprite.onerror = () => { tag.style.display="block"; tag.textContent="sprite: missing"; };
+sprite.onerror = ()=>{ tag.style.display="block"; tag.textContent="sprite: missing"; };
 
-/* ======= PLAYER ======= */
-const GROUND_Y = 520;           // where ground starts inside the 600px canvas
-let DRAW_W = 54, DRAW_H = 81;   // on-screen size (scaled nicely for mobile)
+/* ===== PLAYER ===== */
+const GROUND_Y = 520;        // world “floor” in our 600px canvas
+let DRAW_W = 54, DRAW_H = 81;
 
-const player = {
-  x:(cvs.width-DRAW_W)/2, y:GROUND_Y-DRAW_H,
-  vx:0, vy:0, facing:1,
-  state:"idle", tick:0
-};
+const player = { x:0,y:0,vx:0,vy:0,facing:1,state:"idle",tick:0 };
 const anims = {
   idle : { frames:[0,1,2], speed:12 },
   walk : { frames:[3,4,5], speed: 8 },
-  punch: { frames:[6,7],   speed: 6, hold:8 },
+  punch: { frames:[6,7],   speed: 6 },
   jump : { frames:[8],     speed:12 }
 };
 const keys = { left:0, right:0, jump:0, punch:0 };
 
-/* ======= GAME FLOW ======= */
-let inGame=false, level=0;
+/* ===== GAME FLOW ===== */
 const hud = document.getElementById("hud");
 const stageName = document.getElementById("stageName");
+const musicBtn = document.getElementById("musicBtn");
+let inGame=false, level=0;
+
+/* fade transition */
+let transition = 0;          // 0..1
+let transitionDir = 0;       // 0 idle, 1 fade-in, -1 fade-out
+let nextLevelIndex = 0;
+
+function startTransition(toIndex){
+  if(transitionDir!==0) return;
+  nextLevelIndex = toIndex;
+  transitionDir = 1; // fade to black
+}
 
 function startGame(){
-  // hide menu, show game UI
   document.getElementById("menu").style.display="none";
   cvs.style.display="block";
   document.getElementById("controls").style.display="flex";
   hud.style.display="block";
-  // start level & loop
-  setLevel(0);
-  inGame = true;            // <-- the piece that was missing
+  setLevel(0);               // Room first
+  inGame = true;
   requestAnimationFrame(loop);
 }
 
@@ -137,13 +140,18 @@ function setLevel(i){
   const L = LEVELS[level];
   stageName.textContent = L.name;
   playMusic(L.music);
-  // reset player
-  player.x = (cvs.width - DRAW_W)/2;
-  player.y = GROUND_Y - DRAW_H;
-  player.vx = 0; player.vy = 0; player.state="idle"; player.tick=0;
+  // Player reset: spawn on ground near left for the room; center for others
+  if(level===0){
+    player.x = 40; // start left side of room
+    player.y = L.room.floorY - DRAW_H;
+  }else{
+    player.x = (cvs.width - DRAW_W)/2;
+    player.y = GROUND_Y - DRAW_H;
+  }
+  player.vx=0; player.vy=0; player.state="idle"; player.tick=0;
 }
 
-function loop(ts){
+function loop(){
   requestAnimationFrame(loop);
   if(!inGame) return;
   update();
@@ -151,42 +159,85 @@ function loop(ts){
 }
 
 function update(){
-  // horizontal
-  player.vx = 0;
-  if(keys.left)  { player.vx = -2; player.facing = -1; }
-  if(keys.right) { player.vx =  2; player.facing =  1; }
-  // jump
-  if(keys.jump && player.y >= GROUND_Y - DRAW_H) {
-    player.vy = -8; player.state = "jump";
-  }
+  // transition animation
+  if(transitionDir===1){ transition += 0.08; if(transition>=1){ transition=1; setLevel(nextLevelIndex); transitionDir=-1; } }
+  else if(transitionDir===-1){ transition -= 0.08; if(transition<=0){ transition=0; transitionDir=0; } }
+
+  // input
+  player.vx=0;
+  if(keys.left){  player.vx=-2; player.facing=-1; }
+  if(keys.right){ player.vx= 2; player.facing= 1; }
+
+  if(keys.jump && player.y >= currentFloorY()-DRAW_H){ player.vy=-8; player.state="jump"; }
+
   // physics
-  player.vy += 0.5;               // gravity
+  player.vy += 0.5;
   player.x  += player.vx;
   player.y  += player.vy;
-  // floor
-  if(player.y >= GROUND_Y - DRAW_H){
-    player.y = GROUND_Y - DRAW_H;
-    if(player.state === "jump") player.state = "idle";
-    player.vy = 0;
-  }
-  // state machine
-  if(keys.punch)      player.state = "punch";
-  else if(player.vx)  player.state = "walk";
-  else if(player.state!=="jump") player.state = "idle";
+
+  // floor clamp
+  const floorY = currentFloorY();
+  if(player.y >= floorY-DRAW_H){ player.y=floorY-DRAW_H; if(player.state==="jump") player.state="idle"; player.vy=0; }
+
+  // walls
+  player.x = Math.max(0, Math.min(cvs.width-DRAW_W, player.x));
+
+  // state
+  if(keys.punch) player.state="punch";
+  else if(player.vx) player.state="walk";
+  else if(player.state!=="jump") player.state="idle";
 
   player.tick++;
+
+  // ROOM → DOOR overlap → transition to Crane
+  if(level===0){
+    const L = LEVELS[0].room;
+    const door = { x:L.doorX, y:L.floorY - L.doorH, w:L.doorW, h:L.doorH };
+    if(rectsOverlap(player.x, player.y, DRAW_W, DRAW_H, door.x, door.y, door.w, door.h)){
+      startTransition(1); // to Crane
+    }
+  }
+}
+
+function currentFloorY(){
+  if(level===0) return LEVELS[0].room.floorY;
+  return GROUND_Y;
+}
+
+function rectsOverlap(ax,ay,aw,ah, bx,by,bw,bh){
+  return ax < bx+bw && ax+aw > bx && ay < by+bh && ay+ah > by;
 }
 
 function render(){
   const L = LEVELS[level];
 
-  // background bands (simple parallax-y look)
+  // background bands
   ctx.fillStyle = L.bgTop; ctx.fillRect(0,0,cvs.width, cvs.height*0.50);
   ctx.fillStyle = L.bgMid; ctx.fillRect(0,cvs.height*0.50, cvs.width, cvs.height*0.25);
   ctx.fillStyle = L.bgBot; ctx.fillRect(0,cvs.height*0.75, cvs.width, cvs.height*0.25);
 
   // ground
-  ctx.fillStyle = L.ground; ctx.fillRect(20, GROUND_Y, cvs.width-40, 28);
+  const floorY = currentFloorY();
+  ctx.fillStyle = (level===0)? "#725f4e" : L.ground;
+  ctx.fillRect(20, floorY, cvs.width-40, 28);
+
+  // ROOM decor (mat + sliding door)
+  if(level===0){
+    const R = L.room;
+    // training mat
+    ctx.fillStyle = "#3a2f28"; ctx.fillRect(40, R.matY, cvs.width-80, 6);
+    // door frame
+    ctx.fillStyle = "#a06a3a"; ctx.fillRect(R.doorX-2, R.floorY-R.doorH-2, R.doorW+4, R.doorH+4);
+    // door panel
+    const pulse = (Math.sin(performance.now()/300)+1)*0.5; // 0..1
+    const glow = Math.floor(80 + pulse*80);
+    ctx.fillStyle = `rgb(${glow}, ${glow+40}, 160)`; // warm bluish highlight
+    ctx.fillRect(R.doorX, R.floorY-R.doorH, R.doorW, R.doorH);
+    // tiny hint text
+    ctx.fillStyle = "rgba(255,255,255,.7)";
+    ctx.font = "12px monospace";
+    ctx.fillText("Walk into the door →", R.doorX-150, R.floorY-R.doorH-8);
+  }
 
   // player
   if(spriteReady){
@@ -195,12 +246,16 @@ function render(){
     drawFrame(frame, Math.round(player.x), Math.round(player.y), player.facing<0);
   }
 
-  // tiny FPS peek (optional)
-  // (kept minimal so we don't clutter; remove if you want)
+  // fade overlay
+  if(transition>0){
+    ctx.globalAlpha = transition;
+    ctx.fillStyle = "#000"; ctx.fillRect(0,0,cvs.width,cvs.height);
+    ctx.globalAlpha = 1;
+  }
 }
 
 function drawFrame(f, dx, dy, flip){
-  const PAD = 2;                 // trims edges to avoid bleeding
+  const PAD = 2; // trim to avoid tile bleeding
   const col = f % COLS, row = (f / COLS) | 0;
   const sx = col*FW + PAD, sy = row*FH + PAD, sw = FW - PAD*2, sh = FH - PAD*2;
 
@@ -215,7 +270,7 @@ function drawFrame(f, dx, dy, flip){
   ctx.restore();
 }
 
-/* ======= KEYBOARD ======= */
+/* ===== KEYBOARD ===== */
 addEventListener("keydown", e=>{
   if(e.key==="ArrowLeft"||e.key==="a") keys.left=1;
   if(e.key==="ArrowRight"||e.key==="d") keys.right=1;
