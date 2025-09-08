@@ -8,19 +8,16 @@
   :root{ --frame-max:520px; --pad:10px; }
   html,body{margin:0;background:#000;color:#fff;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
   #frame{max-width:var(--frame-max); margin:0 auto; padding:0 var(--pad);}
-  /* MENU */
   #menu{display:flex;flex-direction:column;align-items:center;gap:14px;padding:18px 0;}
   #menu img{width:100%;height:auto;display:block;border-radius:6px}
   .btn{background:#111;border:2px solid #fff;color:#fff;border-radius:8px;padding:12px 22px;font-size:18px}
   .btn:active{transform:translateY(1px)}
-  /* GAME AREA */
   #wrap{position:relative}
   #cvs{display:none;width:100%;height:auto;background:#0b1622;image-rendering:pixelated;border-radius:12px}
   #hud{position:absolute;left:10px;top:10px;background:rgba(0,0,0,.55);padding:6px 10px;border-radius:8px;
        font-family:monospace;font-size:14px;display:none}
   #tag{position:absolute;left:10px;top:10px;background:#0b0e12;color:#cfe1ff;
-       padding:4px 8px;border-radius:10px;font:12px/1.2 monospace;opacity:.85;display:none}
-  /* TOUCH CONTROLS */
+       padding:4px 8px;border-radius:10px;font:12px/1.2 monospace;opacity:.9;display:none}
   #controls{display:none;gap:10px;justify-content:space-between;margin:10px 0}
   .pad{flex:1;min-width:60px;height:60px;font-size:20px;border:2px solid #303a46;background:#141c26;color:#fff;border-radius:12px}
   .pad:active{filter:brightness(1.2)}
@@ -33,7 +30,7 @@
       <img src="menu-title.png" alt="Raiden and the Wing Chun Temple">
       <button class="btn" onclick="startGame()">Play</button>
       <button class="btn" id="musicBtn" onclick="toggleMusic()">Music: On</button>
-      <button class="btn" onclick="alert('Credits\\nMusic & Art: You\\nCode helper: ChatGPT')">Credits</button>
+      <button class="btn" onclick="alert('Credits\nMusic & Art: You\nCode helper: ChatGPT')">Credits</button>
     </div>
 
     <!-- GAME -->
@@ -43,7 +40,7 @@
       <div id="tag"></div>
     </div>
 
-    <!-- TOUCH CONTROLS -->
+    <!-- Touch controls -->
     <div id="controls">
       <button class="pad" ontouchstart="keys.left=1"  ontouchend="keys.left=0">◀</button>
       <button class="pad" ontouchstart="keys.right=1" ontouchend="keys.right=0">▶</button>
@@ -53,7 +50,7 @@
   </div>
 
 <script>
-/* ============ AUDIO ============ */
+/* ========= AUDIO ========= */
 let musicOn = true, currentMusic = "menu";
 const tracks = {};
 ["menu","crane","snake","tiger","temple","victory","gameover","credits"].forEach(n=>{
@@ -69,40 +66,44 @@ function toggleMusic(){
   if(musicOn) playMusic(currentMusic); else stopAll();
 }
 
-/* ============ LEVEL DEFINITIONS ============ */
-const LEVELS = {
-  room:   { id:"room",   name:"Raiden’s Room", music:"menu",  bg:"#0f1c28" },
-  crane:  { id:"crane",  name:"Crane: Balance", music:"crane",
-            bgTop:"#0e2230", bgMid:"#132a3a", bgBot:"#0b1b27", ground:"#8a5a32" }
-};
+/* ========= LEVELS ========= */
+const LEVELS = [
+  { id:"room",   name:"Raiden’s Room",   music:"menu"   },
+  { id:"crane",  name:"Crane: Balance",  music:"crane",  bgTop:"#0e2230", bgMid:"#132a3a", bgBot:"#0b1b27", ground:"#8a5a32" },
+  { id:"snake",  name:"Snake: Focus",    music:"snake",  bgTop:"#0d1f2c", bgMid:"#10302b", bgBot:"#0a1a19", ground:"#6a7d4a" },
+  { id:"tiger",  name:"Tiger: Power",    music:"tiger",  bgTop:"#1d1a2e", bgMid:"#2b203a", bgBot:"#181425", ground:"#7b3e2f" },
+  { id:"temple", name:"Temple: Harmony", music:"temple", bgTop:"#151b2a", bgMid:"#212f46", bgBot:"#151b2a", ground:"#6d5d4a" },
+];
 
-/* ============ CANVAS ============ */
+/* ========= CANVAS ========= */
 const cvs = document.getElementById("cvs");
-const ctx = cvs.getContext("2d", { alpha:true });
+const ctx = cvs.getContext("2d", {alpha:true});
 ctx.imageSmoothingEnabled = false;
+const hud = document.getElementById("hud");
+const stageName = document.getElementById("stageName");
 
-/* ============ SPRITE (3x3) ============ */
+/* ========= BACKGROUND (ROOM) =========
+   Drawn with FIT scaling (no crop, letterboxes if needed) */
+const roomBg = new Image();
+roomBg.src = "room-bg.png?v="+Date.now();
+let roomBgReady = false;
+roomBg.onload = ()=> roomBgReady = true;
+
+/* ========= SPRITE (3×3) ========= */
 const tag = document.getElementById("tag");
 let spriteReady=false, FW=0, FH=0, COLS=3, ROWS=3;
 const sprite = new Image();
-sprite.src = "raiden-sprites.png?v="+Date.now();  // bust cache while iterating
+sprite.src = "raiden-sprites.png?v="+Date.now();
 sprite.onload = () => {
   FW = Math.floor(sprite.naturalWidth / COLS);
   FH = Math.floor(sprite.naturalHeight / ROWS);
   spriteReady = true;
   tag.style.display = "block";
-  tag.textContent = "sprite: ok";
+  tag.textContent   = "sprite: ok";
 };
-sprite.onerror = () => { tag.style.display="block"; tag.textContent="sprite: missing"; };
+sprite.onerror = ()=>{ tag.style.display="block"; tag.textContent="sprite: missing"; };
 
-/* ============ BACKGROUND (ROOM) ============ */
-const roomBg = new Image();
-let roomBgReady = false;
-roomBg.src = "room-bg.png?v="+Date.now(); // upload our clean room BG as room-bg.png
-roomBg.onload = ()=>{ roomBgReady = true; };
-roomBg.onerror = ()=>{ roomBgReady = false; };
-
-/* ============ PLAYER/ANIMS/INPUT ============ */
+/* ========= PLAYER ========= */
 const GROUND_Y = 520;
 let DRAW_W = 54, DRAW_H = 81;
 
@@ -114,116 +115,116 @@ const player = {
 const anims = {
   idle : { frames:[0,1,2], speed:12 },
   walk : { frames:[3,4,5], speed: 8 },
-  punch: { frames:[6,7],   speed: 6 },
+  punch: { frames:[6,7],   speed: 6, hold:8 },
   jump : { frames:[8],     speed:12 }
 };
 const keys = { left:0, right:0, jump:0, punch:0 };
 
-/* ============ GAME FLOW ============ */
-let inGame=false, level=LEVELS.room;
-const hud = document.getElementById("hud");
-const stageName = document.getElementById("stageName");
+/* ========= DOOR (room → crane) ========= */
+const DOOR = { x: 280, y: GROUND_Y-100, w: 46, h: 100 };
 
+/* ========= GAME FLOW ========= */
+let inGame=false, levelIndex=0;
 function startGame(){
   document.getElementById("menu").style.display="none";
   cvs.style.display="block";
   document.getElementById("controls").style.display="flex";
   hud.style.display="block";
-  setLevel(LEVELS.room);
+  setLevel(0);          // room
   inGame = true;
   requestAnimationFrame(loop);
 }
-
-function setLevel(L){
-  level = L;
+function setLevel(i){
+  levelIndex = i;
+  const L = LEVELS[levelIndex];
   stageName.textContent = L.name;
   playMusic(L.music);
-  // spawn player near left for the room; center for crane
-  if(L.id==="room"){
-    player.x = 40;
-  } else {
-    player.x = (cvs.width - DRAW_W)/2;
-  }
+  // reset player
+  player.x = (levelIndex===0 ? 40 : (cvs.width - DRAW_W)/2);
   player.y = GROUND_Y - DRAW_H;
-  player.vx=0; player.vy=0; player.state="idle"; player.tick=0;
+  player.vx = 0; player.vy = 0; player.state="idle"; player.tick=0;
 }
 
-/* Door in the room */
-const door = { x:cvs.width-80, y:GROUND_Y-120, w:50, h:120, color:"#91b9ac", trim:"#9a673c" };
-
-function loop(){
+/* ========= LOOP ========= */
+let lastTs=0, fps=0;
+function loop(ts){
   requestAnimationFrame(loop);
   if(!inGame) return;
+  // tiny fps
+  if(ts-lastTs>250){ fps = Math.round(1000/(performance.now()-lastTs)); lastTs=performance.now(); tag.textContent = `sprite: ${spriteReady?'ok':'…'}`; }
   update();
   render();
 }
-
 function update(){
-  // movement
+  // input → velocity
   player.vx = 0;
   if(keys.left)  { player.vx = -2; player.facing = -1; }
   if(keys.right) { player.vx =  2; player.facing =  1; }
-
   // jump
   if(keys.jump && player.y >= GROUND_Y - DRAW_H) {
     player.vy = -8; player.state = "jump";
   }
-
   // physics
-  player.vy += 0.5;             // gravity
+  player.vy += 0.5;
   player.x  += player.vx;
   player.y  += player.vy;
-
   // floor
   if(player.y >= GROUND_Y - DRAW_H){
     player.y = GROUND_Y - DRAW_H;
     if(player.state === "jump") player.state = "idle";
     player.vy = 0;
   }
-
-  // states
+  // state
   if(keys.punch)      player.state = "punch";
   else if(player.vx)  player.state = "walk";
   else if(player.state!=="jump") player.state = "idle";
 
-  // room → door overlap to go to Crane
-  if(level.id === "room"){
+  // room → door trigger
+  if(LEVELS[levelIndex].id==="room"){
     const px = player.x + DRAW_W/2;
-    if(px > door.x && px < door.x + door.w && player.y >= door.y - DRAW_H + 10){
-      setLevel(LEVELS.crane);
+    const py = player.y + DRAW_H;
+    if(px > DOOR.x && px < DOOR.x+DOOR.w && py >= DOOR.y && py <= DOOR.y+DOOR.h){
+      setLevel(1); // Crane
     }
   }
 
   player.tick++;
 }
 
+/* ========= RENDER ========= */
 function render(){
-  if(level.id === "room"){
-    // draw background image (cover)
+  const L = LEVELS[levelIndex];
+
+  if(L.id==="room"){
+    // FIT the whole background (no cropping)
     if(roomBgReady){
-      const scale = Math.max(cvs.width/roomBg.naturalWidth, cvs.height/roomBg.naturalHeight);
-      const dw = roomBg.naturalWidth*scale, dh = roomBg.naturalHeight*scale;
-      const dx = (cvs.width - dw)/2, dy = (cvs.height - dh)/2;
+      const scale = Math.min(cvs.width/roomBg.naturalWidth, cvs.height/roomBg.naturalHeight);
+      const dw = roomBg.naturalWidth  * scale;
+      const dh = roomBg.naturalHeight * scale;
+      const dx = (cvs.width  - dw)/2;
+      const dy = (cvs.height - dh)/2;
+      // fill bars to match palette
+      ctx.fillStyle = "#0b1622"; ctx.fillRect(0,0,cvs.width,cvs.height);
       ctx.drawImage(roomBg, dx, dy, dw, dh);
-    } else {
-      // graceful fallback
+    }else{
+      // fallback gradient
       const g = ctx.createLinearGradient(0,0,0,cvs.height);
       g.addColorStop(0,"#112233"); g.addColorStop(.5,"#0f2130"); g.addColorStop(1,"#0b1622");
       ctx.fillStyle=g; ctx.fillRect(0,0,cvs.width,cvs.height);
     }
-    // simple floor plank to ground the player
-    ctx.fillStyle = "#6f594b"; ctx.fillRect(20, GROUND_Y, cvs.width-40, 22);
-    ctx.fillStyle = "#3b2f29"; ctx.fillRect(40, GROUND_Y+10, cvs.width-80, 4);
+    // ground plank
+    ctx.fillStyle = "#6e5849";
+    ctx.fillRect(40, GROUND_Y, cvs.width-80, 24);
     // door
-    ctx.fillStyle = door.trim;  ctx.fillRect(door.x-4, door.y-4, door.w+8, door.h+8);
-    ctx.fillStyle = door.color; ctx.fillRect(door.x, door.y, door.w, door.h);
-  } else if(level.id === "crane"){
-    // abstract crane background bands
-    ctx.fillStyle = level.bgTop; ctx.fillRect(0,0,cvs.width, cvs.height*0.50);
-    ctx.fillStyle = level.bgMid; ctx.fillRect(0,cvs.height*0.50, cvs.width, cvs.height*0.25);
-    ctx.fillStyle = level.bgBot; ctx.fillRect(0,cvs.height*0.75, cvs.width, cvs.height*0.25);
-    // ground
-    ctx.fillStyle = level.ground; ctx.fillRect(20, GROUND_Y, cvs.width-40, 28);
+    ctx.fillStyle = "#96beb0"; ctx.fillRect(DOOR.x, DOOR.y, DOOR.w, DOOR.h);
+    ctx.lineWidth = 6; ctx.strokeStyle="#8a5a32"; ctx.strokeRect(DOOR.x, DOOR.y, DOOR.w, DOOR.h);
+
+  }else{
+    // simple banded background + ground for stages
+    ctx.fillStyle = L.bgTop; ctx.fillRect(0,0,cvs.width, cvs.height*0.50);
+    ctx.fillStyle = L.bgMid; ctx.fillRect(0,cvs.height*0.50, cvs.width, cvs.height*0.25);
+    ctx.fillStyle = L.bgBot; ctx.fillRect(0,cvs.height*0.75, cvs.width, cvs.height*0.25);
+    ctx.fillStyle = L.ground; ctx.fillRect(20, GROUND_Y, cvs.width-40, 28);
   }
 
   // player
@@ -235,7 +236,7 @@ function render(){
 }
 
 function drawFrame(f, dx, dy, flip){
-  const PAD = 2;                       // trim to avoid edge bleeding
+  const PAD = 2; // trim edges to avoid bleeding
   const col = f % COLS, row = (f / COLS) | 0;
   const sx = col*FW + PAD, sy = row*FH + PAD, sw = FW - PAD*2, sh = FH - PAD*2;
 
@@ -250,7 +251,7 @@ function drawFrame(f, dx, dy, flip){
   ctx.restore();
 }
 
-/* ============ KEYBOARD ============ */
+/* ========= KEYBOARD ========= */
 addEventListener("keydown", e=>{
   if(e.key==="ArrowLeft"||e.key==="a") keys.left=1;
   if(e.key==="ArrowRight"||e.key==="d") keys.right=1;
