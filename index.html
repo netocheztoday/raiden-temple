@@ -1,161 +1,232 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8">
-  <title>Raiden and the Wing Chun Temple</title>
-  <style>
-    body { margin:0; background:#000; color:#fff; font-family:monospace; text-align:center; }
-    #menu { display:flex; flex-direction:column; align-items:center; margin-top:20px; }
-    button { margin:8px; padding:10px 20px; font-size:18px; }
-    canvas { display:block; margin:0 auto; background:#111; image-rendering:pixelated; }
-    #hud { position:absolute; top:5px; left:5px; background:rgba(0,0,0,0.5); padding:5px 10px; border-radius:4px; }
-    #controls { position:absolute; bottom:10px; left:50%; transform:translateX(-50%); display:flex; gap:10px; }
-    .btn { width:60px; height:60px; font-size:20px; }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>Raiden and the Wing Chun Temple</title>
+<style>
+  :root{
+    --frame-max: 520px;   /* max width of the portrait game frame */
+    --pad: 10px;
+  }
+  html,body{margin:0;background:#000;color:#fff;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+  /* Centered portrait game frame */
+  #frame{max-width:var(--frame-max); margin:0 auto; padding:0 var(--pad); }
+  #menu{display:flex;flex-direction:column;align-items:center;gap:14px;padding:18px 0;}
+  #menu img{width:100%;height:auto;display:block;border-radius:6px}
+  .btn{background:#111;border:2px solid #fff;color:#fff;border-radius:8px;padding:12px 22px;font-size:18px}
+  .btn:active{transform:translateY(1px)}
+  /* Canvas + HUD */
+  #wrap{position:relative}
+  #cvs{display:none;width:100%;height:auto;background:#0b1622;image-rendering:pixelated; border-radius:12px}
+  #hud{position:absolute;left:10px;top:10px;background:rgba(0,0,0,.55);padding:6px 10px;border-radius:8px;
+       font-family:monospace;font-size:14px;display:none}
+  /* Touch controls */
+  #controls{display:none;gap:10px;justify-content:space-between;margin:10px 0}
+  .pad{flex:1;min-width:60px;height:60px;font-size:20px;border:2px solid #303a46;background:#141c26;color:#fff;border-radius:12px}
+  .pad:active{filter:brightness(1.2)}
+  /* Small helper tag (sprite/fps) */
+  #tag{position:absolute;left:10px;top:10px;background:#0b0e12;color:#cfe1ff;
+       padding:4px 8px;border-radius:10px;font:12px/1.2 monospace;opacity:.85;display:none}
+</style>
 </head>
 <body>
-  <div id="menu">
-    <img src="menu-title.png" style="max-width:90%;height:auto;">
-    <button onclick="startGame()">Play</button>
-    <button onclick="toggleMusic()" id="musicBtn">Music: On</button>
-    <button onclick="showCredits()">Credits</button>
-  </div>
-  <div id="hud" style="display:none;">Stage: <span id="stageName">---</span></div>
-  <canvas id="cvs" width="360" height="600" style="display:none;"></canvas>
-  <div id="controls" style="display:none;">
-    <button class="btn" ontouchstart="keys.left=true" ontouchend="keys.left=false">◀</button>
-    <button class="btn" ontouchstart="keys.right=true" ontouchend="keys.right=false">▶</button>
-    <button class="btn" ontouchstart="keys.punch=true" ontouchend="keys.punch=false">J</button>
-    <button class="btn" ontouchstart="keys.jump=true" ontouchend="keys.jump=false">↑</button>
+  <div id="frame">
+    <!-- MENU -->
+    <div id="menu">
+      <img src="menu-title.png" alt="Raiden and the Wing Chun Temple">
+      <button class="btn" onclick="startGame()">Play</button>
+      <button class="btn" id="musicBtn" onclick="toggleMusic()">Music: On</button>
+      <button class="btn" onclick="alert('Credits\\nMusic & Art: You\\nCode helper: ChatGPT')">Credits</button>
+    </div>
+
+    <!-- GAME -->
+    <div id="wrap">
+      <canvas id="cvs" width="360" height="600"></canvas>
+      <div id="hud">Stage: <span id="stageName">—</span></div>
+      <div id="tag"></div>
+    </div>
+    <div id="controls">
+      <button class="pad" ontouchstart="keys.left=1"  ontouchend="keys.left=0">◀</button>
+      <button class="pad" ontouchstart="keys.right=1" ontouchend="keys.right=0">▶</button>
+      <button class="pad" ontouchstart="keys.punch=1" ontouchend="keys.punch=0">J</button>
+      <button class="pad" ontouchstart="keys.jump=1"  ontouchend="keys.jump=0">↑</button>
+    </div>
   </div>
 
 <script>
-const cvs = document.getElementById("cvs");
-const ctx = cvs.getContext("2d");
-ctx.imageSmoothingEnabled = false;
-
-// ===== MUSIC =====
-let musicOn = true;
+/* ======= AUDIO ======= */
+let musicOn = true, currentMusic = "menu";
 const tracks = {};
 ["menu","crane","snake","tiger","temple","victory","gameover","credits"].forEach(n=>{
-  const a=new Audio(n+".mp3"); a.loop=true; tracks[n]=a;
+  const a = new Audio(n + ".mp3");
+  a.loop = (n!=="victory" && n!=="gameover");
+  tracks[n] = a;
 });
-function playMusic(name){
-  if(!musicOn) return;
-  stopAllMusic();
-  if(tracks[name]) tracks[name].play();
-}
-function stopAllMusic(){ Object.values(tracks).forEach(a=>{a.pause();a.currentTime=0;}); }
+function stopAll(){ for(const a of Object.values(tracks)){ a.pause(); a.currentTime=0; } }
+function playMusic(name){ if(!musicOn) return; stopAll(); currentMusic=name; tracks[name]?.play(); }
 function toggleMusic(){
-  musicOn=!musicOn;
+  musicOn = !musicOn;
   document.getElementById("musicBtn").textContent = "Music: " + (musicOn?"On":"Off");
-  if(musicOn){ playMusic(currentMusic); }
-  else stopAllMusic();
+  if(musicOn) playMusic(currentMusic); else stopAll();
 }
-function showCredits(){ alert("Game by You + ChatGPT 🤝"); }
 
-// ===== LEVELS =====
+/* ======= LEVELS ======= */
 const LEVELS = [
-  {id:"crane", name:"Crane: Balance", music:"crane", bgTop:"#0e2230", bgMid:"#112b3a", bgBot:"#0b1b27", ground:"#8a5a32"},
-  {id:"snake", name:"Snake: Focus", music:"snake", bgTop:"#0d1f2c", bgMid:"#0f2e2a", bgBot:"#0a1a19", ground:"#5a6d3f"},
-  {id:"tiger", name:"Tiger: Power", music:"tiger", bgTop:"#1d1a2e", bgMid:"#2c213b", bgBot:"#1a1525", ground:"#7b3e2f"},
-  {id:"temple",name:"Temple: Harmony", music:"temple",bgTop:"#151b2a", bgMid:"#202d44", bgBot:"#151b2a", ground:"#6d5d4a"},
+  { id:"crane",  name:"Crane: Balance",  music:"crane",  bgTop:"#0e2230", bgMid:"#132a3a", bgBot:"#0b1b27", ground:"#8a5a32" },
+  { id:"snake",  name:"Snake: Focus",    music:"snake",  bgTop:"#0d1f2c", bgMid:"#10302b", bgBot:"#0a1a19", ground:"#6a7d4a" },
+  { id:"tiger",  name:"Tiger: Power",    music:"tiger",  bgTop:"#1d1a2e", bgMid:"#2b203a", bgBot:"#181425", ground:"#7b3e2f" },
+  { id:"temple", name:"Temple: Harmony", music:"temple", bgTop:"#151b2a", bgMid:"#212f46", bgBot:"#151b2a", ground:"#6d5d4a" },
 ];
-let currentLevel=0, levelBg, groundColor, currentMusic="menu";
 
-// ===== SPRITE =====
+/* ======= CANVAS / RENDER ======= */
+const cvs = document.getElementById("cvs");
+const ctx = cvs.getContext("2d", { alpha:true });
+ctx.imageSmoothingEnabled = false;
+
+/* ======= SPRITE (3×3) ======= */
+const tag = document.getElementById("tag");
+let spriteReady=false, FW=0, FH=0, COLS=3, ROWS=3;
 const sprite = new Image();
-sprite.src = "raiden-sprites.png";
-let COLS=3, ROWS=3, FW=0, FH=0;
-sprite.onload=()=>{
-  FW=sprite.naturalWidth/COLS;
-  FH=sprite.naturalHeight/ROWS;
-  spriteReady=true;
+sprite.src = "raiden-sprites.png?v="+Date.now();     // cache-bust while iterating
+sprite.onload = () => {
+  FW = Math.floor(sprite.naturalWidth / COLS);
+  FH = Math.floor(sprite.naturalHeight / ROWS);
+  spriteReady = true;
+  tag.style.display = "block";
+  tag.textContent = "sprite: ok";
 };
-let spriteReady=false;
+sprite.onerror = () => { tag.style.display="block"; tag.textContent="sprite: missing"; };
 
-// ===== PLAYER =====
-const GROUND_Y=500, DRAW_W=60, DRAW_H=90;
-const player={x:150,y:GROUND_Y-DRAW_H,vx:0,vy:0,facing:1,state:"idle",anim:0,tick:0};
+/* ======= PLAYER ======= */
+const GROUND_Y = 520;           // where ground starts inside the 600px canvas
+let DRAW_W = 54, DRAW_H = 81;   // on-screen size (scaled nicely for mobile)
 
-const anims={
-  idle:{frames:[0,1,2],speed:12},
-  walk:{frames:[3,4,5],speed:8},
-  punch:{frames:[6,7],speed:6,hold:8},
-  jump:{frames:[8],speed:12}
+const player = {
+  x:(cvs.width-DRAW_W)/2, y:GROUND_Y-DRAW_H,
+  vx:0, vy:0, facing:1,
+  state:"idle", tick:0
 };
+const anims = {
+  idle : { frames:[0,1,2], speed:12 },
+  walk : { frames:[3,4,5], speed: 8 },
+  punch: { frames:[6,7],   speed: 6, hold:8 },
+  jump : { frames:[8],     speed:12 }
+};
+const keys = { left:0, right:0, jump:0, punch:0 };
 
-const keys={left:false,right:false,jump:false,punch:false};
+/* ======= GAME FLOW ======= */
+let inGame=false, level=0;
+const hud = document.getElementById("hud");
+const stageName = document.getElementById("stageName");
 
-// ===== GAME LOOP =====
-let inGame=false, levelBgColor;
 function startGame(){
+  // hide menu, show game UI
   document.getElementById("menu").style.display="none";
-  document.getElementById("cvs").style.display="block";
+  cvs.style.display="block";
   document.getElementById("controls").style.display="flex";
-  document.getElementById("hud").style.display="block";
+  hud.style.display="block";
+  // start level & loop
   setLevel(0);
-  loop();
+  inGame = true;            // <-- the piece that was missing
+  requestAnimationFrame(loop);
 }
+
 function setLevel(i){
-  currentLevel=i; const L=LEVELS[i];
-  document.getElementById("stageName").textContent=L.name;
-  levelBg=L; groundColor=L.ground;
-  stopAllMusic(); currentMusic=L.music; playMusic(currentMusic);
-  player.x=(cvs.width-DRAW_W)/2; player.y=GROUND_Y-DRAW_H;
-  player.vx=0; player.vy=0; player.state="idle"; player.anim=0; player.tick=0;
+  level = i;
+  const L = LEVELS[level];
+  stageName.textContent = L.name;
+  playMusic(L.music);
+  // reset player
+  player.x = (cvs.width - DRAW_W)/2;
+  player.y = GROUND_Y - DRAW_H;
+  player.vx = 0; player.vy = 0; player.state="idle"; player.tick=0;
 }
-function loop(){
+
+function loop(ts){
   requestAnimationFrame(loop);
   if(!inGame) return;
-  update(); render();
+  update();
+  render();
 }
+
 function update(){
-  player.vx=0;
-  if(keys.left) player.vx=-2, player.facing=-1;
-  if(keys.right) player.vx=2, player.facing=1;
-  if(keys.jump && player.y>=GROUND_Y-DRAW_H){ player.vy=-8; player.state="jump"; }
-  player.vy+=0.5; player.x+=player.vx; player.y+=player.vy;
-  if(player.y>=GROUND_Y-DRAW_H){ player.y=GROUND_Y-DRAW_H; player.vy=0; if(player.state=="jump") player.state="idle"; }
-  if(keys.punch) player.state="punch";
-  else if(player.vx!=0) player.state="walk";
-  else if(player.state!="jump") player.state="idle";
+  // horizontal
+  player.vx = 0;
+  if(keys.left)  { player.vx = -2; player.facing = -1; }
+  if(keys.right) { player.vx =  2; player.facing =  1; }
+  // jump
+  if(keys.jump && player.y >= GROUND_Y - DRAW_H) {
+    player.vy = -8; player.state = "jump";
+  }
+  // physics
+  player.vy += 0.5;               // gravity
+  player.x  += player.vx;
+  player.y  += player.vy;
+  // floor
+  if(player.y >= GROUND_Y - DRAW_H){
+    player.y = GROUND_Y - DRAW_H;
+    if(player.state === "jump") player.state = "idle";
+    player.vy = 0;
+  }
+  // state machine
+  if(keys.punch)      player.state = "punch";
+  else if(player.vx)  player.state = "walk";
+  else if(player.state!=="jump") player.state = "idle";
+
   player.tick++;
 }
-function render(){
-  const L=levelBg||LEVELS[0];
-  ctx.fillStyle=L.bgTop; ctx.fillRect(0,0,cvs.width,cvs.height*0.45);
-  ctx.fillStyle=L.bgMid; ctx.fillRect(0,cvs.height*0.45,cvs.width,cvs.height*0.3);
-  ctx.fillStyle=L.bgBot; ctx.fillRect(0,cvs.height*0.75,cvs.width,cvs.height*0.25);
-  ctx.fillStyle=groundColor; ctx.fillRect(0,GROUND_Y,cvs.width,40);
 
+function render(){
+  const L = LEVELS[level];
+
+  // background bands (simple parallax-y look)
+  ctx.fillStyle = L.bgTop; ctx.fillRect(0,0,cvs.width, cvs.height*0.50);
+  ctx.fillStyle = L.bgMid; ctx.fillRect(0,cvs.height*0.50, cvs.width, cvs.height*0.25);
+  ctx.fillStyle = L.bgBot; ctx.fillRect(0,cvs.height*0.75, cvs.width, cvs.height*0.25);
+
+  // ground
+  ctx.fillStyle = L.ground; ctx.fillRect(20, GROUND_Y, cvs.width-40, 28);
+
+  // player
   if(spriteReady){
-    const anim=anims[player.state]; const frame=anim.frames[Math.floor(player.tick/anim.speed)%anim.frames.length];
-    drawFrame(frame,Math.round(player.x),Math.round(player.y),player.facing<0);
+    const a = anims[player.state];
+    const frame = a.frames[Math.floor(player.tick / a.speed) % a.frames.length];
+    drawFrame(frame, Math.round(player.x), Math.round(player.y), player.facing<0);
   }
+
+  // tiny FPS peek (optional)
+  // (kept minimal so we don't clutter; remove if you want)
 }
-function drawFrame(f,dx,dy,flip){
-  const PAD=1;
-  const col=f%COLS, row=Math.floor(f/COLS);
-  const sx=col*FW+PAD, sy=row*FH+PAD, sw=FW-PAD*2, sh=FH-PAD*2;
+
+function drawFrame(f, dx, dy, flip){
+  const PAD = 2;                 // trims edges to avoid bleeding
+  const col = f % COLS, row = (f / COLS) | 0;
+  const sx = col*FW + PAD, sy = row*FH + PAD, sw = FW - PAD*2, sh = FH - PAD*2;
+
   ctx.save();
-  if(flip){ ctx.translate(dx+DRAW_W,dy); ctx.scale(-1,1); ctx.drawImage(sprite,sx,sy,sw,sh,0,0,DRAW_W,DRAW_H); }
-  else ctx.drawImage(sprite,sx,sy,sw,sh,dx,dy,DRAW_W,DRAW_H);
+  if(flip){
+    ctx.translate(dx + DRAW_W, dy);
+    ctx.scale(-1, 1);
+    ctx.drawImage(sprite, sx, sy, sw, sh, 0, 0, DRAW_W, DRAW_H);
+  } else {
+    ctx.drawImage(sprite, sx, sy, sw, sh, dx, dy, DRAW_W, DRAW_H);
+  }
   ctx.restore();
 }
 
-// ===== KEYS =====
-document.addEventListener("keydown",e=>{
-  if(e.key==="ArrowLeft"||e.key==="a") keys.left=true;
-  if(e.key==="ArrowRight"||e.key==="d") keys.right=true;
-  if(e.key==="ArrowUp"||e.key==="w"||e.key===" ") keys.jump=true;
-  if(e.key==="j"||e.key==="J") keys.punch=true;
+/* ======= KEYBOARD ======= */
+addEventListener("keydown", e=>{
+  if(e.key==="ArrowLeft"||e.key==="a") keys.left=1;
+  if(e.key==="ArrowRight"||e.key==="d") keys.right=1;
+  if(e.key==="ArrowUp"||e.key==="w"||e.key===" ") keys.jump=1;
+  if(e.key==="j"||e.key==="J") keys.punch=1;
 });
-document.addEventListener("keyup",e=>{
-  if(e.key==="ArrowLeft"||e.key==="a") keys.left=false;
-  if(e.key==="ArrowRight"||e.key==="d") keys.right=false;
-  if(e.key==="ArrowUp"||e.key==="w"||e.key===" ") keys.jump=false;
-  if(e.key==="j"||e.key==="J") keys.punch=false;
+addEventListener("keyup", e=>{
+  if(e.key==="ArrowLeft"||e.key==="a") keys.left=0;
+  if(e.key==="ArrowRight"||e.key==="d") keys.right=0;
+  if(e.key==="ArrowUp"||e.key==="w"||e.key===" ") keys.jump=0;
+  if(e.key==="j"||e.key==="J") keys.punch=0;
 });
 </script>
 </body>
