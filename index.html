@@ -1,32 +1,32 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>Raiden and the Wing Chun Temple</title>
 <style>
-  :root { --bg:#000; --panel:#0b1622; --btn:#111; --btnBorder:#fff; --btnText:#fff; }
-  * { box-sizing:border-box; touch-action:manipulation; }
-  html,body { height:100%; margin:0; background:#000; color:#fff;
-              font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; }
-  /* Layout */
-  #root { height:100%; display:grid; place-items:center; }
-  #menu { display:grid; place-items:center; gap:14px; padding:12px; }
-  #menu img { max-width:92vw; max-height:62vh; height:auto; display:block; }
-  .btn { appearance:none; background:var(--btn); color:var(--btnText); border:2px solid var(--btnBorder);
-         padding:12px 22px; border-radius:12px; font-size:18px; }
-  .btn:active { transform:scale(.98); }
-  #stage { display:none; }
-  /* Canvas sizing: logical 360x640, CSS-fitted for portrait */
-  #game { background:linear-gradient(#0b1622,#0f1e2f);
-          border-radius:14px; box-shadow:0 20px 60px #000a;
-          image-rendering: pixelated; image-rendering: crisp-edges; }
-  /* Small debug chip */
-  #hud { position:fixed; top:10px; left:10px; padding:6px 8px;
-         background:#161b22d0; border:1px solid #2a2f3a; border-radius:8px; font-size:12px; display:none; }
-  #unlock { position:fixed; inset:0; display:none; align-items:center; justify-content:center;
-            background:#0008; font-weight:600; }
-  #unlock .panel { padding:14px 18px; background:#121212; border:2px solid #fff6; border-radius:12px; }
+  :root{--ink:#fff;--bg:#000;--panel:#0b1622;--btn:#12161c;--btnB:#fff;}
+  *{box-sizing:border-box;touch-action:manipulation}
+  html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+  #root{height:100%;display:grid;place-items:center}
+  /* ===== MENU ===== */
+  #menu{display:grid;place-items:center;gap:14px;padding:12px}
+  #menu img{max-width:92vw;max-height:62vh;height:auto;display:block}
+  .btn{appearance:none;background:var(--btn);color:var(--ink);border:2px solid var(--btnB);padding:12px 22px;border-radius:12px;font-size:18px}
+  .btn:active{transform:scale(.98)}
+  /* ===== GAME AREA ===== */
+  #stage{display:none;position:relative}
+  #game{background:linear-gradient(#0e1a28,#0b1522);border-radius:14px;box-shadow:0 20px 60px #000a;image-rendering:pixelated;image-rendering:crisp-edges}
+  /* HUD + unlock */
+  #hud{position:absolute;top:10px;left:10px;padding:6px 8px;background:#161b22d0;border:1px solid #2a2f3a;border-radius:8px;font-size:12px}
+  #unlock{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:#0008;font-weight:700}
+  #unlock .panel{padding:14px 18px;background:#121212;border:2px solid #fff6;border-radius:12px}
+  /* ===== TOUCH CONTROLS ===== */
+  #pad{position:absolute;left:0;right:0;bottom:0;padding:12px;display:flex;justify-content:space-between;gap:12px;pointer-events:none}
+  .cluster{display:flex;gap:12px;pointer-events:auto}
+  .ctl{width:68px;height:68px;border-radius:14px;border:2px solid #445;display:grid;place-items:center;background:#0e1520aa;font-weight:700}
+  .ctl:active{transform:scale(.97)}
+  @media (min-width:520px){ .ctl{width:72px;height:72px} }
 </style>
 </head>
 <body>
@@ -42,37 +42,46 @@
   <!-- GAME -->
   <div id="stage">
     <canvas id="game" width="360" height="640"></canvas>
+    <div id="hud">sprite:<b id="sok">—</b> · fps:<b id="fps">—</b></div>
+
+    <!-- Touch controls -->
+    <div id="pad">
+      <div class="cluster">
+        <div class="ctl" id="btnL">◄</div>
+        <div class="ctl" id="btnR">►</div>
+      </div>
+      <div class="cluster">
+        <div class="ctl" id="btnJ">J</div>
+        <div class="ctl" id="btnU">↑</div>
+      </div>
+    </div>
   </div>
 </div>
-
-<div id="hud">sprite:<b id="sok">—</b> · fps:<b id="fps">—</b></div>
 
 <!-- Mobile audio unlock -->
 <div id="unlock"><div class="panel">🔊 Tap to enable sound</div></div>
 
 <script>
-/* ========== AUDIO (robust unlock) ========== */
+/* ================= AUDIO ================= */
 const menuMusic = new Audio('menu.mp3'); menuMusic.loop = true;
 const levelMusic = new Audio('crane.mp3'); levelMusic.loop = true;
-let musicOn = true, audioUnlocked = false;
+let musicOn = true, audioUnlocked = false, inGame = false;
 
 async function tryPlay(a){ try{ await a.play(); return true; }catch{ return false; } }
 async function ensureAudioUnlocked(){
   if(audioUnlocked) return true;
-  // user gesture handler
   const overlay = document.getElementById('unlock');
-  overlay.style.display = 'flex';
+  overlay.style.display='flex';
   return new Promise(res=>{
     const enable = async ()=>{
-      const ok1 = await tryPlay(menuMusic);
-      const ok2 = await tryPlay(levelMusic);
-      if (ok1 || ok2) { audioUnlocked = true; overlay.style.display='none'; res(true); }
+      const ok = await tryPlay(menuMusic) || await tryPlay(levelMusic);
+      if(ok){ audioUnlocked = true; overlay.style.display='none'; res(true); }
     };
-    overlay.addEventListener('click', enable, { once:true });
+    overlay.addEventListener('click', enable, {once:true});
   });
 }
 
-/* ========== MENU WIRING ========== */
+/* ================= MENU ================= */
 const menu = document.getElementById('menu');
 const stage = document.getElementById('stage');
 const playBtn = document.getElementById('playBtn');
@@ -83,63 +92,52 @@ musicBtn.onclick = async ()=>{
   musicBtn.textContent = 'Music: ' + (musicOn?'On':'Off');
   if(!musicOn){ menuMusic.pause(); levelMusic.pause(); return; }
   await ensureAudioUnlocked();
-  if(inGame){ levelMusic.play().catch(()=>{}); } else { menuMusic.play().catch(()=>{}); }
+  (inGame?levelMusic:menuMusic).play().catch(()=>{});
 };
 
 playBtn.onclick = async ()=>{
   inGame = true;
   menu.style.display='none';
   stage.style.display='block';
-  document.getElementById('hud').style.display='block';
   fitCanvas();
-  if(musicOn){
-    await ensureAudioUnlocked();
-    menuMusic.pause(); levelMusic.currentTime = 0; levelMusic.play().catch(()=>{});
-  }
+  if(musicOn){ await ensureAudioUnlocked(); menuMusic.pause(); levelMusic.currentTime=0; levelMusic.play().catch(()=>{}); }
   startGame();
 };
 
-/* ========== CANVAS FIT (portrait) ========== */
+/* ================= CANVAS FIT ================= */
 const cvs = document.getElementById('game');
 const ctx = cvs.getContext('2d');
 function fitCanvas(){
-  // Keep portrait; scale CSS to fit without changing logical pixels
   const maxH = Math.min(innerHeight*0.96, 740);
   const maxW = Math.min(innerWidth*0.96, 420);
   const targetH = Math.max(560, Math.min(640, maxH));
   const targetW = Math.max(320, Math.min(360, maxW));
-  cvs.style.height = targetH + 'px';
-  cvs.style.width  = targetW + 'px';
+  cvs.style.height = targetH+'px';
+  cvs.style.width  = targetW+'px';
 }
 addEventListener('resize', fitCanvas);
 
-/* ========== SPRITE (3x3 auto-detect) ========== */
+/* ================= SPRITE (3x3) ================= */
 const sprite = new Image();
-sprite.src = 'raiden-sprites.png?v=5'; // bump v to bust cache
-let COLS = 3, ROWS = 3, FW=256, FH=384, spriteReady=false;
+sprite.src = 'raiden-sprites.png?v=6'; // cache-bust if needed
+let COLS=3, ROWS=3, FW=256, FH=384, spriteReady=false;
+const sok = document.getElementById('sok'), fpsEl = document.getElementById('fps');
 
 sprite.onload = ()=>{
-  FW = Math.floor(sprite.naturalWidth / COLS);
-  FH = Math.floor(sprite.naturalHeight / ROWS);
-  spriteReady = true;
-  sok.textContent = 'ok';
+  FW = Math.floor(sprite.naturalWidth/COLS);
+  FH = Math.floor(sprite.naturalHeight/ROWS);
+  spriteReady = true; sok.textContent='ok';
 };
-sprite.onerror = ()=>{ spriteReady = false; sok.textContent = 'missing'; };
+sprite.onerror = ()=>{ spriteReady=false; sok.textContent='missing'; };
 
-/* ========== PLAYER / GAME LOOP ========== */
-const sok = document.getElementById('sok'), fpsEl = document.getElementById('fps');
-let inGame = false;
-const GROUND_Y = 560;         // world ground line (logical coords)
-const DRAW_W   = 80;          // on-screen size
-const DRAW_H   = 120;
+/* ================= GAME ================= */
+const GROUND_Y = 560;         // logical ground line
+let DRAW_W = 64, DRAW_H = 96; // <- tweak here to scale Raiden
 
 const player = {
-  x:(cvs.width - DRAW_W)/2,
-  y:GROUND_Y - DRAW_H,
-  vx:0, vy:0,
-  facing:1,
-  onGround:true,
-  state:'idle', anim:0, tick:0
+  x:(cvs.width-DRAW_W)/2, y:GROUND_Y-DRAW_H,
+  vx:0, vy:0, facing:1,
+  onGround:true, state:'idle', anim:0, tick:0
 };
 const anims = {
   idle:{frames:[0,1,2],speed:12},
@@ -148,33 +146,47 @@ const anims = {
   jump:{frames:[8],speed:12}
 };
 
-const keys = { left:false, right:false, up:false, attack:false };
+const keys = {left:false,right:false,up:false,attack:false};
+
+/* keyboard */
 addEventListener('keydown', e=>{
-  if(e.key==='ArrowLeft'||e.key==='a') keys.left = true;
-  if(e.key==='ArrowRight'||e.key==='d') keys.right = true;
-  if(e.key===' '||e.key==='w'||e.key==='ArrowUp') keys.up = true;
-  if(e.key==='j') keys.attack = true;
+  if(e.key==='ArrowLeft'||e.key==='a') keys.left=true;
+  if(e.key==='ArrowRight'||e.key==='d') keys.right=true;
+  if(e.key===' '||e.key==='w'||e.key==='ArrowUp') keys.up=true;
+  if(e.key==='j'||e.key==='J') keys.attack=true;
 });
 addEventListener('keyup', e=>{
-  if(e.key==='ArrowLeft'||e.key==='a') keys.left = false;
-  if(e.key==='ArrowRight'||e.key==='d') keys.right = false;
-  if(e.key===' '||e.key==='w'||e.key==='ArrowUp') keys.up = false;
-  if(e.key==='j') keys.attack = false;
+  if(e.key==='ArrowLeft'||e.key==='a') keys.left=false;
+  if(e.key==='ArrowRight'||e.key==='d') keys.right=false;
+  if(e.key===' '||e.key==='w'||e.key==='ArrowUp') keys.up=false;
+  if(e.key==='j'||e.key==='J') keys.attack=false;
 });
+
+/* touch controls */
+function bindHold(el, set, val=true){
+  const on = e=>{ e.preventDefault(); set(val); };
+  const off= e=>{ e.preventDefault(); set(false); };
+  el.addEventListener('touchstart',on); el.addEventListener('mousedown',on);
+  ['touchend','touchcancel','mouseup','mouseleave'].forEach(t=>el.addEventListener(t,off));
+}
+bindHold(document.getElementById('btnL'), v=>keys.left=v,true);
+bindHold(document.getElementById('btnR'), v=>keys.right=v,true);
+bindHold(document.getElementById('btnU'), v=>keys.up=v,true);
+bindHold(document.getElementById('btnJ'), v=>keys.attack=v,true);
 
 let last=performance.now(), frames=0;
 function update(dt){
-  // movement
-  const speed = 120; // px/sec
+  // move
+  const speed=120;
   player.vx = (keys.left?-speed:0) + (keys.right?speed:0);
-  player.x += player.vx * dt;
-  if(keys.left)  player.facing = -1;
-  if(keys.right) player.facing = 1;
+  player.x += player.vx*dt;
+  if(keys.left) player.facing=-1; if(keys.right) player.facing=1;
+  player.x = Math.max(16, Math.min(cvs.width-16-DRAW_W, player.x));
 
-  // jump/gravity
-  if(keys.up && player.onGround){ player.vy = -520; player.onGround=false; }
+  // jump
+  if(keys.up && player.onGround){ player.vy=-520; player.onGround=false; }
   player.vy += 1400*dt; player.y += player.vy*dt;
-  if(player.y + DRAW_H >= GROUND_Y){ player.y = GROUND_Y - DRAW_H; player.vy = 0; player.onGround = true; }
+  if(player.y + DRAW_H >= GROUND_Y){ player.y = GROUND_Y-DRAW_H; player.vy=0; player.onGround=true; }
 
   // state
   if(!player.onGround) player.state='jump';
@@ -182,58 +194,68 @@ function update(dt){
   else if(Math.abs(player.vx)>2) player.state='walk';
   else player.state='idle';
 
-  // animate
+  // anim
   const a = anims[player.state]; player.tick++;
   if(player.state==='punch'){
-    if(player.tick % a.speed === 0){
+    if(player.tick%a.speed===0){
       player.anim++;
       if(player.anim>=a.frames.length){
         player.anim=a.frames.length-1;
-        if(player.tick > a.speed*(a.hold??6)){ keys.attack=false; player.state='idle'; player.anim=0; player.tick=0; }
+        if(player.tick>a.speed*(a.hold??6)){ keys.attack=false; player.state='idle'; player.anim=0; player.tick=0; }
       }
     }
   }else{
-    if(player.tick % a.speed === 0){ player.anim=(player.anim+1)%a.frames.length; }
+    if(player.tick%a.speed===0) player.anim=(player.anim+1)%a.frames.length;
   }
 }
 
-function draw(){
-  ctx.clearRect(0,0,cvs.width,cvs.height);
-  // ground/platform visuals
-  ctx.fillStyle='#2a2f3a'; ctx.fillRect(0,GROUND_Y+20,cvs.width,cvs.height-(GROUND_Y+20));
-  ctx.fillStyle='#6e4b2e'; ctx.fillRect(40,GROUND_Y-10,cvs.width-80,12);
+function drawBG(){
+  // distant mountains + gradient stripes for depth
+  const g=ctx.createLinearGradient(0,0,0,cvs.height);
+  g.addColorStop(0,'#0f1d2c'); g.addColorStop(.6,'#0e1826'); g.addColorStop(1,'#0d1623');
+  ctx.fillStyle=g; ctx.fillRect(0,0,cvs.width,cvs.height);
 
-  // player
+  ctx.fillStyle='#0a1320';
+  ctx.beginPath(); ctx.moveTo(0,440); ctx.lineTo(90,380); ctx.lineTo(220,420); ctx.lineTo(360,360);
+  ctx.lineTo(360,520); ctx.lineTo(0,520); ctx.closePath(); ctx.fill();
+
+  // ground layer
+  ctx.fillStyle='#2a2f3a'; ctx.fillRect(0,GROUND_Y+20,cvs.width,cvs.height-(GROUND_Y+20));
+  ctx.fillStyle='#6e4b2e'; ctx.fillRect(24,GROUND_Y-10,cvs.width-48,12);
+}
+
+function drawPlayer(){
   const a = anims[player.state]; const id = a.frames[player.anim|0];
-  const sx = (id % COLS) * FW, sy = Math.floor(id / COLS) * FH;
+  const sx = (id%COLS)*FW, sy = Math.floor(id/COLS)*FH;
 
   ctx.save();
-  if(player.facing === -1){ ctx.translate(player.x+DRAW_W/2,0); ctx.scale(-1,1); ctx.translate(-(player.x+DRAW_W/2),0); }
-  ctx.imageSmoothingEnabled = false;
-
+  if(player.facing===-1){ ctx.translate(player.x+DRAW_W/2,0); ctx.scale(-1,1); ctx.translate(-(player.x+DRAW_W/2),0); }
+  ctx.imageSmoothingEnabled=false;
   if(spriteReady){
-    ctx.drawImage(sprite, sx,sy,FW,FH, player.x,player.y, DRAW_W,DRAW_H);
+    ctx.drawImage(sprite,sx,sy,FW,FH, player.x,player.y, DRAW_W,DRAW_H);
   }else{
-    // placeholder box so it's never "blank"
     ctx.fillStyle='#ffd34d'; ctx.fillRect(player.x,player.y,DRAW_W,DRAW_H);
     ctx.fillStyle='#111'; ctx.fillRect(player.x+20,player.y+30,12,12);
   }
   ctx.restore();
 }
 
+function draw(){
+  drawBG();
+  drawPlayer();
+}
+
 function loop(ts){
-  const dt = Math.min(0.033, (ts-last)/1000); last = ts;
+  const dt = Math.min(0.033,(ts-last)/1000); last=ts;
   update(dt); draw();
-  frames++; if(frames%12===0){ fpsEl.textContent = String(Math.round(12/dt)); }
+  frames++; if(frames%12===0) fpsEl.textContent=String(Math.round(12/dt));
   requestAnimationFrame(loop);
 }
 
-function startGame(){
-  fitCanvas(); last = performance.now(); requestAnimationFrame(loop);
-}
+function startGame(){ fitCanvas(); last=performance.now(); requestAnimationFrame(loop); }
 
-/* Try to start menu music quietly; if blocked, user can enable via Music button or Play */
-menuMusic.play().catch(()=>{ /* wait for unlock */ });
+/* start menu music softly; if blocked, unlock overlay handles it */
+menuMusic.play().catch(()=>{});
 </script>
 </body>
 </html>
