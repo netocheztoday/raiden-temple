@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Raiden and the Wing Chun Temple</title>
+<style>
+  :root{ --maxw:880px; --pad:10px; }
+  html,body{margin:0;background:#000;color:#fff;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+  #frame{max-width:var(--maxw);margin:0 auto;padding:0 var(--pad)}
+
+  /* MENU */
+  #menu{display:flex;flex-direction:column;align-items:center;gap:14px;padding:18px 0}
+  #menu img{width:100%;height:auto;display:block;border-radius:8px}
+  .btn{background:#111;border:2px solid #fff;color:#fff;border-radius:10px;padding:12px 22px;font-size:18px}
+  .btn:active{transform:translateY(1px)}
+
+  /* GAME */
+  #wrap{position:relative}
+  #cvs{display:none;width:100%;height:auto;background:#0b1622;image-rendering:pixelated;border-radius:12px}
+  #hud{position:absolute;left:10px;top:10px;display:none}
+  .chip{display:inline-block;background:rgba(0,0,0,.5);padding:6px 10px;border-radius:10px;font:14px/1.2 monospace;margin-right:8px}
+  #hearts{position:absolute;right:10px;top:10px;display:none;gap:6px}
+  .heart{width:28px;height:28px;filter:drop-shadow(0 0 4px #f7d35a)}
+
+  /* TOUCH */
+  #controls{display:none;gap:12px;justify-content:space-between;margin:12px 0}
+  .pad{flex:1;min-width:90px;height:70px;font-size:22px;border:2px solid #2b3542;background:#121922;color:#fff;border-radius:16px}
+  .pad:active{filter:brightness(1.2)}
+
+  /* FX + GAME OVER */
+  #fade{position:absolute;inset:0;background:#000;opacity:0;pointer-events:none;transition:opacity .35s}
+  #vignette{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .28s;
+    background:radial-gradient(ellipse at center, rgba(0,0,0,0) 40%, rgba(0,0,0,.65) 100%);}
+  #over{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.75)}
+  #over .card{background:#0c1118;border:2px solid #fff;border-radius:12px;padding:18px;min-width:260px;text-align:center}
+  #over h2{margin:.2rem 0 1rem}
+
+  /* DEBUG */
+  #debugPanel{
+    position:absolute;right:10px;bottom:10px;min-width:220px;
+    background:rgba(0,0,0,.7);border:1px solid #6ea0ff;border-radius:8px;
+    font:12px/1.3 monospace;color:#cfe1ff;padding:8px;display:none;z-index:20
+  }
+  #debugPanel b{color:#fff}
+</style>
+</head>
+<body>
+<div id="frame">
+
+  <!-- MENU -->
+  <div id="menu">
+    <img src="menu-title.png" alt="Raiden and the Wing Chun Temple">
+    <button class="btn" onclick="startGame()">Play</button>
+    <button class="btn" id="musicBtn" onclick="toggleMusic()">Music: On</button>
+    <button class="btn" onclick="alert('Credits\nMusic & Art: You\nCode helper: ChatGPT')">Credits</button>
+  </div>
+
+  <!-- GAME -->
+  <div id="wrap">
+    <canvas id="cvs" width="640" height="360"></canvas>
+    <div id="hud">
+      <span class="chip" id="stageChip">Stage: —</span>
+      <span class="chip" id="spriteChip">sprite: …</span>
+    </div>
+    <div id="hearts"></div>
+
+    <div id="fade"></div>
+    <div id="vignette"></div>
+
+    <!-- Game Over -->
+    <div id="over">
+      <div class="card">
+        <h2>Game Over!</h2>
+        <div style="display:flex;gap:10px;justify-content:center">
+          <button class="btn" onclick="retry()">Retry</button>
+          <button class="btn" onclick="toMenu()">Menu</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- DEBUG -->
+    <div id="debugPanel"></div>
+  </div>
+
+  <!-- TOUCH CONTROLS -->
+  <div id="controls">
+    <button class="pad" ontouchstart="keys.left=1"  ontouchend="keys.left=0">◀</button>
+    <button class="pad" ontouchstart="keys.right=1" ontouchend="keys.right=0">▶</button>
+    <button class="pad" ontouchstart="keys.punch=1" ontouchend="keys.punch=0">J</button>
+    <button class="pad" ontouchstart="keys.jump=1"  ontouchend="keys.jump=0">↑</button>
+  </div>
+
+</div>
+
+<script>
+/* =================== AUDIO =================== */
+let musicOn = true, currentMusic = "menu";
+const tracks = {};
+const trackNames = ["menu","field","crane","snake","tiger","gates","temple","victory","credits","lose","gameover"];
+trackNames.forEach(n=>{
+  const a = new Audio(n+".mp3");
+  a.loop = !(["victory","credits","lose","gameover"].includes(n));
+  tracks[n]=a;
+});
+function stopAll(){ for(const a of Object.values(tracks)){ a.pause(); a.currentTime=0; } }
+function playMusic(name){ currentMusic=name; if(musicOn){ stopAll(); tracks[name]?.play().catch(()=>{}); } }
+function playSfx(name){ tracks[name]?.play().catch(()=>{}); }
+function toggleMusic(){
+  musicOn = !musicOn;
+  document.getElementById("musicBtn").textContent = "Music: " + (musicOn?"On":"Off");
+  if(musicOn) playMusic(currentMusic); else stopAll();
+}
+
+/* =================== CANVAS/CONSTS =================== */
+const cvs = document.getElementById("cvs");
+const ctx = cvs.getContext("2d", {alpha:true});
+ctx.imageSmoothingEnabled = false;
+const W = cvs.width, H = cvs.height;
+const GROUND_Y = 300;
+
+/* =================== SPRITE =================== */
+const spriteChip = document.getElementById("spriteChip");
+let spriteReady=false, FW=0, FH=0, COLS=3, ROWS=3;
+const sprite = new Image();
+sprite.src = "raiden-sprites.png?v="+Date.now();
+sprite.onload = ()=>{
+  FW = Math.floor(sprite.naturalWidth/COLS);
+  FH = Math.floor(sprite.naturalHeight/ROWS);
+  spriteReady = true;
+  spriteChip.textContent = "sprite: ok";
+};
+sprite.onerror = ()=>{ spriteChip.textContent = "sprite: missing"; };
+
+/* =================== LEVELS =================== */
+const LEVELS = [
+  { id:"room",   name:"Room",   music:"menu",  bg:"bg-room.png",
+    portals:{left:null, right:"field"}, pit:null },
+
+  { id:"field",  name:"Field",  music:"field", bg:"bg-field.png",
+    portals:{left:"room", right:"crane"},
+    pit:{ x: (W/2 - 90)|0, w: 180 } },           // pit present here
+
+  { id:"crane",  name:"Crane",  music:"crane", bg:"bg-crane.png",
+    portals:{left:"field", right:"snake"}, pit:null },
+
+  { id:"snake",  name:"Snake",  music:"snake", bg:"bg-snake.png",
+    portals:{left:"crane", right:"tiger"}, pit:null },
+
+  { id:"tiger",  name:"Tiger",  music:"tiger", bg:"bg-tiger.png",
+    portals:{left:"snake", right:"templegates"}, pit:null },
+
+  { id:"templegates", name:"Temple Gates", music:"gates", bg:"bg-templegates.png",
+    portals:{left:"tiger", right:"temple"}, pit:null },
+
+  { id:"temple", name:"Temple", music:"temple", bg:"bg-temple.png",
+    portals:{left:"templegates", right:"hidden"}, pit:null },
+
+  { id:"hidden", name:"Hidden Room", music:"temple", bg:"bg-temple-room.png",
+    portals:{left:"temple", right:"room"}, pit:null }
+];
+
+/* backgrounds (cache) */
+const bgCache = new Map();
+function getBG(src){
+  if(bgCache.has(src)) return bgCache.get(src);
+  const im = new Image(); im.src = src+"?v="+Date.now(); bgCache.set(src, im); return im;
+}
+
+/* =================== PLAYER =================== */
+const DRAW_W = 54, DRAW_H = 81;
+const SPEED = 2.4, JUMP = 8.4, GRAV = 0.5;
+let canDouble = true;
+
+const player = { x:0, y:0, vx:0, vy:0, facing:1, state:"idle", tick:0, enteringFrom:null };
+const keys = { left:0,right:0,jump:0,punch:0 };
+const anims = {
+  idle:{frames:[0,1,2],speed:12},
+  walk:{frames:[3,4,5],speed:8},
+  punch:{frames:[6,7],speed:6},
+  jump:{frames:[8],speed:12}
+};
+
+/* =================== FLOW / UI =================== */
+const stageChip = document.getElementById("stageChip");
+const heartsUI = document.getElementById("hearts");
+const hud = document.getElementById("hud");
+const fade = document.getElementById("fade");
+const vignetteEl = document.getElementById("vignette");
+const over = document.getElementById("over");
+
+let inGame=false, levelIndex=0, lives=3, pendingReset=false;
+let currentBG = null;
+
+/* screen shake */
+let shakeTime=0, shakeMag=0;
+function startShake(ms=220, mag=6){ shakeTime=ms; shakeMag=mag; }
+
+/* DEBUG */
+let DEBUG=false, dbg={ overPit:false, entry:"?", track:"?", lvl:"?", pos:"" };
+function setDebugVisible(on){ DEBUG=on; document.getElementById('debugPanel').style.display = on ? 'block' : 'none'; }
+function updateDebugPanel(){
+  if(!DEBUG) return;
+  const el=document.getElementById('debugPanel');
+  el.innerHTML =
+    `<b>Level:</b> ${dbg.lvl}<br>`+
+    `<b>Entry:</b> ${dbg.entry}<br>`+
+    `<b>Track:</b> ${dbg.track}<br>`+
+    `<b>Pos:</b> ${dbg.pos}<br>`+
+    `<b>OverPit:</b> ${dbg.overPit}`;
+}
+
+function startGame(){
+  document.getElementById("menu").style.display="none";
+  cvs.style.display="block";
+  document.getElementById("controls").style.display="flex";
+  hud.style.display="block";
+  heartsUI.style.display="flex";
+  inGame=true;
+  lives=3; drawHearts();
+  setLevelById("room", null);
+  requestAnimationFrame(loop);
+}
+
+function toMenu(){
+  stopAll();
+  inGame=false;
+  over.style.display="none";
+  cvs.style.display="none";
+  hud.style.display="none";
+  heartsUI.style.display="none";
+  document.getElementById("controls").style.display="none";
+  document.getElementById("menu").style.display="flex";
+  playMusic("menu");
+}
+
+function retry(){
+  over.style.display="none";
+  lives=3; drawHearts();
+  setLevel(levelIndex, null);
+}
+
+function setLevelById(id, entrySide){
+  const idx = LEVELS.findIndex(l=>l.id===id);
+  setLevel(idx, entrySide);
+}
+
+function setLevel(idx, entrySide){
+  levelIndex = Math.max(0, Math.min(LEVELS.length-1, idx));
+  const L = LEVELS[levelIndex];
+  stageChip.textContent = "Stage: " + L.name;
+  playMusic(L.music);
+  currentBG = getBG(L.bg);
+
+  // spawn away from the door we came through
+  if(entrySide==="left"){ player.x = 30; player.facing = 1; }
+  else if(entrySide==="right"){ player.x = W - DRAW_W - 30; player.facing = -1; }
+  else { player.x = (W - DRAW_W)/2; player.facing = 1; }
+
+  player.y = GROUND_Y - DRAW_H;
+  player.vx = 0; player.vy = 0;
+  player.state="idle"; player.tick=0;
+  player.enteringFrom = entrySide || null;
+  canDouble = true;
+
+  // debug
+  dbg.entry = player.enteringFrom || "start";
+  dbg.lvl = L.id; dbg.track = L.music; updateDebugPanel();
+}
+
+/* =================== HEARTS =================== */
+function drawHearts(){
+  heartsUI.innerHTML = "";
+  for(let i=0;i<3;i++){
+    const img = document.createElement("img");
+    img.className="heart";
+    img.alt = i<lives ? "♥" : "♡";
+    img.src = i<lives
+      ? "data:image/svg+xml;utf8,"+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"><path fill="#ffd54a" d="M14 24l-9-9c-3-3 1-9 5-6l4 3 4-3c4-3 8 3 5 6l-9 9z"/></svg>')
+      : "data:image/svg+xml;utf8,"+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"><path fill="none" stroke="#ffd54a" stroke-width="2" d="M14 24l-9-9c-3-3 1-9 5-6l4 3 4-3c4-3 8 3 5 6l-9 9z"/></svg>');
+    heartsUI.appendChild(img);
+  }
+}
+
+/* =================== LOOP =================== */
+let last=0;
+function loop(t){ requestAnimationFrame(loop); if(!inGame) return; const dt=Math.min(33,t-last); last=t; if(shakeTime>0) shakeTime-=dt; update(); render(); }
+
+/* =================== UPDATE =================== */
+function update(){
+  const L = LEVELS[levelIndex];
+
+  // movement
+  player.vx = 0;
+  if(keys.left){  player.vx = -SPEED; player.facing=-1; }
+  if(keys.right){ player.vx =  SPEED; player.facing= 1; }
+
+  // jump / double jump
+  if(keys.jump){
+    if(player.y >= GROUND_Y - DRAW_H){ player.vy = -JUMP; canDouble = true; }
+    else if(canDouble){ player.vy = -JUMP*0.9; canDouble = false; }
+    keys.jump = 0;
+  }
+
+  // physics
+  player.vy += GRAV;
+  player.x  += player.vx;
+  player.y  += player.vy;
+
+  // bounds
+  player.x = Math.max(0, Math.min(W - DRAW_W, player.x));
+
+  // PIT handling: disable floor over pit
+  const center = player.x + DRAW_W/2;
+  const overPit = !!(L.pit && center >= L.pit.x && center <= (L.pit.x + L.pit.w));
+
+  // floor collision (only if NOT over pit)
+  if(!overPit && player.y >= GROUND_Y - DRAW_H){
+    player.y = GROUND_Y - DRAW_H; player.vy = 0; canDouble = true;
+  }
+
+  // fell below screen → lose life / game over
+  if(player.y > H + 40 && !pendingReset){
+    pendingReset = true;
+    startShake(220,6);
+    lives = Math.max(0, lives-1); drawHearts();
+    playSfx("lose");
+    if(lives <= 0){
+      stopAll(); playSfx("gameover");
+      setTimeout(()=>{ over.style.display="flex"; pendingReset=false; }, 400);
+    }else{
+      setTimeout(()=>{ setLevel(levelIndex, player.enteringFrom); pendingReset=false; }, 400);
+    }
+  }
+
+  // state
+  if(player.vy < 0 || player.vy > 0.2) player.state="jump";
+  else if(keys.punch) player.state="punch";
+  else if(player.vx)  player.state="walk";
+  else player.state="idle";
+  player.tick++;
+
+  // doors (needs movement toward door)
+  const leftDoor  = {x:10,  y:GROUND_Y-120, w:22, h:110};
+  const rightDoor = {x:W-32,y:GROUND_Y-120, w:22, h:110};
+  const touching = (a)=> (player.x+DRAW_W > a.x && player.x < a.x+a.w && player.y+DRAW_H > a.y);
+
+  if(L.portals.left && touching(leftDoor) && player.vx<0){
+    fadeTo(()=> setLevelById(L.portals.left, "right"));
+  }
+  if(L.portals.right && touching(rightDoor) && player.vx>0){
+    const going = L.portals.right;
+    // Special secret vibe: Temple -> Hidden vignette flash
+    if(L.id==="temple" && going==="hidden"){
+      vignetteEl.style.opacity="1";
+      setTimeout(()=>{ fadeTo(()=>{ setLevelById(going, "left"); vignetteEl.style.opacity="0"; }); }, 120);
+    }else{
+      fadeTo(()=> setLevelById(going, "left"));
+    }
+  }
+
+  // debug info
+  dbg.overPit = !!overPit;
+  dbg.pos = `${(player.x|0)},${(player.y|0)}`;
+  dbg.lvl = L.id; dbg.track = currentMusic || "-"; updateDebugPanel();
+}
+
+/* =================== RENDER =================== */
+function render(){
+  const L = LEVELS[levelIndex];
+
+  // camera shake
+  ctx.save();
+  if(shakeTime>0){
+    const dx = (Math.random()*2-1) * shakeMag;
+    const dy = (Math.random()*2-1) * shakeMag;
+    ctx.translate(dx, dy);
+  }
+
+  // BG cover
+  const img = getBG(L.bg);
+  if(img && img.complete) ctx.drawImage(img, 0, 0, img.naturalWidth||img.width, img.naturalHeight||img.height, 0, 0, W, H);
+  else { ctx.fillStyle="#0e2230"; ctx.fillRect(0,0,W,H); }
+
+  // ground
+  ctx.fillStyle = "#8a5a32"; ctx.fillRect(20, GROUND_Y, W-40, 22);
+
+  // pit visual
+  if(L.pit){ ctx.fillStyle="#1a0f0f"; ctx.fillRect(L.pit.x, GROUND_Y, L.pit.w, 24); }
+
+  // doors
+  ctx.fillStyle = "rgba(180,220,215,.9)";
+  if(L.portals.left)  ctx.fillRect(10, GROUND_Y-120, 22, 110);
+  if(L.portals.right) ctx.fillRect(W-32, GROUND_Y-120, 22, 110);
+
+  // DEBUG outlines
+  if(DEBUG){
+    ctx.strokeStyle="#6ea0ff"; ctx.lineWidth=2;
+    if(L.portals.left){  ctx.strokeRect(10, GROUND_Y-120, 22, 110); }
+    if(L.portals.right){ ctx.strokeRect(W-32, GROUND_Y-120, 22, 110); }
+    if(L.pit){ ctx.strokeStyle="#ff6e6e"; ctx.strokeRect(L.pit.x, GROUND_Y, L.pit.w, 24); }
+  }
+
+  // player
+  if(spriteReady){
+    const a = anims[player.state];
+    const frame = a.frames[Math.floor(player.tick/a.speed)%a.frames.length];
+    drawFrame(frame, Math.round(player.x), Math.round(player.y), player.facing<0);
+  }
+
+  ctx.restore();
+}
+
+function drawFrame(f, dx, dy, flip){
+  const PAD=2, col=f%COLS, row=(f/COLS)|0;
+  const sx=col*FW+PAD, sy=row*FH+PAD, sw=FW-PAD*2, sh=FH-PAD*2;
+  ctx.save();
+  if(flip){ ctx.translate(dx+DRAW_W,dy); ctx.scale(-1,1); ctx.drawImage(sprite, sx,sy,sw,sh, 0,0, DRAW_W,DRAW_H); }
+  else    { ctx.drawImage(sprite, sx,sy,sw,sh, dx,dy, DRAW_W,DRAW_H); }
+  ctx.restore();
+}
+
+/* =================== FX =================== */
+function fadeTo(fn){ const f=document.getElementById("fade"); f.style.opacity="1"; setTimeout(()=>{ fn(); f.style.opacity="0"; }, 250); }
+
+/* =================== INPUT =================== */
+const keysObj = {left:["ArrowLeft","a","A"], right:["ArrowRight","d","D"], jump:[" ","ArrowUp","w","W"], punch:["j","J"]};
+addEventListener("keydown", e=>{
+  if(keysObj.left.includes(e.key))  keys.left=1;
+  if(keysObj.right.includes(e.key)) keys.right=1;
+  if(keysObj.jump.includes(e.key))  keys.jump=1;
+  if(keysObj.punch.includes(e.key)) keys.punch=1;
+
+  // debug controls
+  if(e.key==="d"||e.key==="D"){ setDebugVisible(!DEBUG); }
+  if(DEBUG && (e.key==="k"||e.key==="K")){
+    lives=Math.max(0,lives-1); drawHearts(); playSfx("lose");
+    if(lives===0){ stopAll(); playSfx("gameover"); over.style.display="flex"; }
+  }
+});
+addEventListener("keyup", e=>{
+  if(keysObj.left.includes(e.key))  keys.left=0;
+  if(keysObj.right.includes(e.key)) keys.right=0;
+  if(keysObj.jump.includes(e.key))  keys.jump=0;
+  if(keysObj.punch.includes(e.key)) keys.punch=0;
+});
+
+/* =================== AUDIO UNLOCK =================== */
+function ensureFirstGestureAudio(){
+  const onFirst = ()=>{
+    if(musicOn && currentMusic) tracks[currentMusic]?.play().catch(()=>{});
+    removeEventListener("pointerdown",onFirst);
+    removeEventListener("keydown",onFirst);
+  };
+  addEventListener("pointerdown",onFirst,{once:true});
+  addEventListener("keydown",onFirst,{once:true});
+}
+ensureFirstGestureAudio();
+
+/* =================== PREFLIGHT (debugging help) =================== */
+(function preflight(){
+  const expectedImgs = [
+    "menu-title.png","raiden-sprites.png",
+    "bg-room.png","bg-field.png","bg-crane.png","bg-snake.png","bg-tiger.png",
+    "bg-templegates.png","bg-temple.png","bg-temple-room.png"
+  ];
+  const expectedAudio = ["menu","field","crane","snake","tiger","gates","temple","lose","gameover"]
+    .map(n=>n+".mp3");
+
+  const missing = [];
+  expectedImgs.forEach(src=>{
+    const i = new Image(); i.onload=()=>{}; i.onerror=()=>missing.push(src); i.src = src+"?pf="+Date.now();
+  });
+  expectedAudio.forEach(src=>{
+    fetch(src,{method:"HEAD"}).catch(()=>missing.push(src));
+  });
+
+  setTimeout(()=>{
+    if(missing.length && !DEBUG){ setDebugVisible(true); }
+    const el = document.getElementById('debugPanel');
+    if(el) el.innerHTML = (el.innerHTML||"") + (missing.length? `<br><b>Missing:</b><br>${missing.join("<br>")}` : "<br><b>Missing:</b> none");
+  }, 700);
+})();
+
+/* Expose for overlay buttons */
+window.retry = retry;
+window.toMenu = toMenu;
+window.startGame = startGame;
+window.toggleMusic = toggleMusic;
+</script>
+</body>
+</html>
